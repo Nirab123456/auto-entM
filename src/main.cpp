@@ -10,7 +10,7 @@
 // ---------- CONFIG (edit for your network / receiver) ----------
 const char* WIFI_SSID = "94 Pembroke Street - 2"; // <- REPLACE
 const char* WIFI_PASS = "welcomehome";           // <- REPLACE
-const char* PC_IP      = "192.168.2.142";         // <- REPLACE with your PC IP
+const char* PC_IP      = "192.168.2.133";         // <- REPLACE with your PC IP
 const uint16_t PC_PORT = 7000;                   // <- PC listening TCP port
 // ----------------------------------------------------------------
 
