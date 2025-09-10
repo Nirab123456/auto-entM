@@ -1,0 +1,4 @@
+body { font-family: Arial, sans-serif; margin: 20px; }
+#app { max-width: 800px; }
+#controls { margin-top: 12px; }
+#log { margin-top: 16px; font-size: 0.9em; color: #333; }

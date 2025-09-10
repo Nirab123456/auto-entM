@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ESP Receiver Control</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <h1>ESP Receiver</h1>
+    <div id="status">
+      <p>Running: <span id="running">?</span></p>
+      <p>Gain: <span id="gainVal">?</span></p>
+      <p>Last seq: <span id="last_seq">?</span></p>
+      <p>Highest sample index: <span id="highest">?</span></p>
+      <p>Samples written: <span id="samples">?</span></p>
+    </div>
+
+    <div id="controls">
+      <label>Gain:
+        <input type="range" id="gain" min="0.1" max="8" step="0.01" />
+        <input type="number" id="gainNumber" min="0.1" max="8" step="0.01" />
+      </label>
+      <button id="apply">Apply (POST)</button>
+      <button id="applyWS">Apply (WS)</button>
+    </div>
+
+    <div id="log"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

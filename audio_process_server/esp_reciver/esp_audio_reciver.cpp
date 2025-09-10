@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "web_server/server_state.h"
 
 // server config (will be upgraded for dynamic controll)
 static const char* SELF_LISTENER = "0.0.0.0";
@@ -423,4 +424,12 @@ void tcp_server_loop()
     std::cout<<"Exiting from TCP server"<<std::endl;
 
     
+}
+
+
+
+
+int main()
+{
+    return 0;
 }
