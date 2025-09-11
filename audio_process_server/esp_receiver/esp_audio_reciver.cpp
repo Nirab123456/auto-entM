@@ -60,7 +60,7 @@ std::atomic<uint64_t> global_highest_recived_idx(0);
 std::atomic<uint32_t> global_last_sequence(0);
 
 
-bool recive_full (uint16_t socket_file_descriptior, uint8_t* buffer_pointer, size_t required_bytes)
+bool recive_full (int socket_file_descriptior, uint8_t* buffer_pointer, size_t required_bytes)
 {
     size_t total_recived_bytes = 0;
     while (total_recived_bytes < required_bytes)
@@ -199,7 +199,7 @@ void tcp_server_loop()
         perror("Error creating new socket :(");
         return;
     }
-    uint8_t reuse = 1;
+    int reuse = 1;
     setsockopt(new_socket_file_descriptior,SOL_SOCKET,SO_REUSEADDR, &reuse,sizeof(reuse));
 
     struct sockaddr_in address_binder;
