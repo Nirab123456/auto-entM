@@ -23,7 +23,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "web_server/server_state.h"
 
 // server config (will be upgraded for dynamic controll)
 static const char* SELF_LISTENER = "0.0.0.0";
@@ -182,7 +181,7 @@ void validate_header_basics(uint32_t* sample_rate, uint8_t* num_channels,
     }
     if (*bytes_per_sample != IN_BYTES_PER_SAMPLE)
     {
-        std::cerr << "[TCP] warning bytes_per_sample mismatch: " << int(bytes_per_sample) << " != " << int(IN_BYTES_PER_SAMPLE) << std::endl;
+        std::cerr << "[TCP] warning bytes_per_sample mismatch: " << bytes_per_sample<< " != " << int(IN_BYTES_PER_SAMPLE) << std::endl;
     }
     if (*format_id != FORMATE_INT32_LEFT24) {
         std::cerr << "[TCP] warning format_id mismatch: " << format_id << std::endl;
