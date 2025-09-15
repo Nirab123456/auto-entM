@@ -23,7 +23,7 @@ const uint16_t FRAMES_PER_PACKET = 1024;
 const uint8_t BYTES_PER_SAMPLE = 4;
 const size_t BYTES_TO_READ = (size_t)(FRAMES_PER_PACKET*BYTES_PER_SAMPLE*2);
 const size_t PAYLOAD_BYTES = (size_t)(FRAMES_PER_PACKET*BYTES_PER_SAMPLE*NUMBER_CHANNELS);
-
+const size_t NEEDED_WORDS = (size_t)(FRAMES_PER_PACKET*2);
 
 
 const uint8_t HEADER_SIZE = 34;
@@ -40,7 +40,7 @@ static uint32_t i2s_word_slots[FRAMES_PER_PACKET*2];
 static uint32_t payload_words [FRAMES_PER_PACKET];
 
 // Use WiFiManager to allow dynamic SSID / password set through captive portal
-void wifiConnect() {
+void wifiConnectmanager() {
     WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
     WiFiManager wm;
  
@@ -107,7 +107,7 @@ void i2s_init()
     i2s_zero_dma_buffer(I2S_NUM_0);
     Serial.println("[I2S] initialized (APLL enabled)");
 }
-void write_tcp_header(
+int write_tcp_header(
                     uint32_t seq,
                     uint64_t first_sample_index,
                     uint64_t timestamp_us,
@@ -140,9 +140,12 @@ void write_tcp_header(
     header[33] = (uint8_t) ((FORMAT_INT32_LEFT24 >> 8)&0xff);
 
 
+    return 1;
+
+
 }
 
-bool send_tcp_packet(WiFiClient &client,const uint32_t* payload_words_pointer,size_t payload_bytes)
+bool send_tcp_packet(WiFiClient &client,const uint32_t* payload_words_pointer)
 {
     if (!client || !client.connected())
     {
@@ -162,9 +165,9 @@ bool send_tcp_packet(WiFiClient &client,const uint32_t* payload_words_pointer,si
     }
     const uint8_t* p = (const uint8_t*)payload_words_pointer; // payload_words_ptr is an array of uint32
     size_t sent_payload = 0;
-    while (sent_payload < payload_bytes)
+    while (sent_payload < PAYLOAD_BYTES)
     {
-        int written_payload = client.write(p+sent_payload,payload_bytes-sent_payload);
+        int written_payload = client.write(p+sent_payload,PAYLOAD_BYTES-sent_payload);
         if (written_payload <= 0)
         {
             return false;
@@ -205,22 +208,101 @@ void audiotask(void *pv)
         }
         
         size_t bytes_read = 0;
+        esp_err_t resolve = i2s_read(I2S_NUM_0,(void*)i2s_word_slots,BYTES_TO_READ,&bytes_read,portMAX_DELAY);
+        if (resolve != ESP_OK || bytes_read == 0)
+        {
+            Serial.printf("[I2S] read err %d bytes=%u\n", resolve, (unsigned)bytes_read);
+            // brief delay to avoid tight loop on persistent error
+            delay(10);
+            continue;      
+        }
 
+        size_t word_count = bytes_read/4; // will be replaced the magic number with proper variable
+        size_t available_frames =0;
+        if (word_count >= NEEDED_WORDS)
+        {
+            for (size_t i = 0; i < FRAMES_PER_PACKET; i++)
+            {
+                payload_words[i] = i2s_word_slots[i*2+1];
+            }
+            available_frames = FRAMES_PER_PACKET;
+            
+        }
+        else
+        {
+            size_t maxframes = word_count / 2;
+            for (size_t i = 0; i < maxframes; i++)
+            {
+                payload_words[i] = i2s_word_slots[i*2+1];
+            }
+            for (size_t i = maxframes; i < FRAMES_PER_PACKET; i++)
+            {
+                payload_words[i] = 0;
+            }
+            available_frames = maxframes;            
+        }
+        
+        uint32_t seq = ++sequense_counter;
+        uint64_t first_sample_index = absolute_sample_index;
+        uint64_t timestamp_us = (uint64_t)esp_timer_get_time();
+
+        int write_header_ok = write_tcp_header(seq,first_sample_index,timestamp_us,(uint16_t)available_frames);
+
+        while (write_header_ok !=1)
+        {
+            Serial.println("Failure in writing Header");
+            write_header_ok = write_tcp_header(seq,first_sample_index,timestamp_us,(uint16_t)available_frames);
+
+        }
+        
+        bool send_packet_ok = send_tcp_packet(TCPCLIENT,payload_words);
+        if (!send_packet_ok)
+        {
+            Serial.println("Failure in data communication (SENDING)--TCP");
+            TCPCLIENT.stop();
+            delay(50);
+            continue;
+        }
+        absolute_sample_index += (uint64_t)available_frames;
+        taskYIELD();
     }
-    
-    
+    vTaskDelete(NULL);
 }
 
+void STARTAUDIOTASK()
+{
+    xTaskCreatePinnedToCore(audiotask,"audiotask",8192,NULL,6,NULL,1);
+}
 
 void setup()
 {
     // put your setup code here, to run once:
     Serial.begin(115200);
+    while (!Serial)
+    {
+        delay(5);
+    }
+
+    Serial.println("\n=== ESP32 I2S -> TCP streamer (high-quality, sample-indexed) ===");
 
 
-    wifiConnect();
+
+    wifiConnectmanager();
+    i2s_init();
+    STARTAUDIOTASK();
+    Serial.println("setup done :)");
 }
 
 void loop()
 {
-}
+  // Main loop prints status occasionally
+  static unsigned long last = 0;
+  if (millis() - last > 2000) {
+    last = millis();
+    Serial.printf("[STAT] WiFi=%s TCP=%s seq=%u sample_idx=%llu\n",
+                  WiFi.isConnected() ? "OK" : "NO",
+                  TCPCLIENT.connected() ? "OK" : "NO",
+                  (unsigned)sequense_counter,
+                  (unsigned long long)absolute_sample_index);
+  }
+  delay(100);}
