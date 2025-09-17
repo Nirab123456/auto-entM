@@ -1,15 +1,23 @@
 // corrected_esp32_stream_tcp_i2s.ino
+// Fixed & cleaned up version of your TCP streamer sketch (I2S -> TCP).
+// Uses WiFiManager + Preferences to optionally capture receiver IP/port.
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiManager.h>   // Install via Library Manager
 #include "driver/i2s.h"
-#include "esp_timer.h"     // for esp_timer_get_time()
+#include "esp_timer.h"     // esp_timer_get_time()
+#include <Preferences.h>
 
-// ---------- user configuration ----------
+// ---------- user configuration (edit if desired) ----------
 const char* WIFI_SSID = "94 Pembroke Street - 2";
-const char* WIFI_PAS  = "welcomehome";
-const char* PC_IP      = "192.168.2.133";
-const uint16_t PC_PORT = 7000;
+const char* WIFI_PASS = "welcomehome";
+
+String PC_IP      = "";   // populated from prefs or WiFiManager field
+uint16_t PC_PORT  = 7000; // populated from prefs or WiFiManager field
+
+const char* WIFI_AP_NAME = "AutoConnectAP";
+const char* WIFI_AP_PASS = "password";
 
 // i2s pins and capture params
 const uint8_t PIN_CLK = 7;
@@ -23,9 +31,9 @@ const uint16_t FRAMES_PER_PACKET = 1024;
 const uint8_t BYTES_PER_SAMPLE = 4;
 
 // derived sizes
-const size_t BYTES_TO_READ = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * 2; // stereo slots
+const size_t BYTES_TO_READ = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * 2; // stereo slots (bytes)
 const size_t PAYLOAD_BYTES  = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * NUMBER_CHANNELS;
-const size_t NEEDED_WORDS   = (size_t)FRAMES_PER_PACKET * 2;
+const size_t NEEDED_WORDS   = (size_t)FRAMES_PER_PACKET * 2; // words (32-bit) needed from i2s_words
 
 // header constants (must match receiver)
 constexpr int HEADER_SIZE = 34;
@@ -33,30 +41,101 @@ const uint32_t HEADER_MAGIC = 0x45535032; // 'ESP2'
 const uint16_t FORMAT_INT32_LEFT24 = 1;
 
 // globals
-uint8_t header_buf[HEADER_SIZE];
+static uint8_t header_buf[HEADER_SIZE];
 WiFiClient TCPCLIENT;
 
-// atomic for safe access from two contexts (task + main)
+// atomics/indices
 volatile uint32_t sequence_counter = 0;
 uint64_t absolute_sample_index = 0;
 
-// static buffers - no malloc inside audio task
+// static buffers (no malloc inside audio task)
 static uint32_t i2s_word_slots[FRAMES_PER_PACKET * 2]; // L0,R0,L1,R1...
 static uint32_t payload_words[FRAMES_PER_PACKET];
 
-// ---------- wifi manager ----------
-void wifiConnectmanager() {
-  WiFi.mode(WIFI_STA);
-  WiFiManager wm;
-  bool res = wm.autoConnect("AutoConnectAP", "password");
-  if (!res) {
-    Serial.println("WiFiManager failed to connect or user cancelled.");
-  } else {
-    Serial.println("WiFi connected via WiFiManager.");
+// Preferences + WiFiManager
+Preferences prefs;
+WiFiManager wm;
+
+// -------------------- helpers for prefs & WiFiManager --------------------
+
+static bool looks_like_ip(const char* s) {
+  int a, b, c, d;
+  char tail;
+  // sscanf returns number of items successfully parsed. We expect exactly 4 and no trailing junk.
+  int n = sscanf(s, "%d.%d.%d.%d%c", &a, &b, &c, &d, &tail);
+  if (n == 4) {
+    return (a >= 0 && a <= 255 && b >= 0 && b <= 255 && c >= 0 && c <= 255 && d >= 0 && d <= 255);
   }
+  return false;
 }
 
-// ---------- i2s init ----------
+static bool looks_like_port(const char* s) {
+  long p = atol(s);
+  return (p > 0 && p <= 65535);
+}
+
+// Load saved PC IP/port from Preferences into PC_IP and PC_PORT
+void load_prefs() {
+  prefs.begin("config", true); // read-only mode
+  String saved_ip = prefs.getString("pc_ip", "");
+  String saved_port = prefs.getString("pc_port", "");
+  if (saved_ip.length() > 0 && looks_like_ip(saved_ip.c_str())) PC_IP = saved_ip;
+  if (saved_port.length() > 0 && looks_like_port(saved_port.c_str())) PC_PORT = (uint16_t)saved_port.toInt();
+  prefs.end();
+}
+
+// Save PC IP/port into Preferences
+void save_prefs(const char* ip, const char* port) {
+  prefs.begin("config", false);
+  prefs.putString("pc_ip", String(ip));
+  prefs.putString("pc_port", String(port));
+  prefs.end();
+}
+
+// Present WiFiManager portal with extra fields for PC IP/port, load/save using Preferences
+void setup_wifi_and_params() {
+  // Load saved values if present
+  load_prefs();
+
+  // Prepare default buffers for the portal fields
+  char ipbuf[40]; ipbuf[0] = 0;
+  char portbuf[16]; portbuf[0] = 0;
+  if (PC_IP.length()) PC_IP.toCharArray(ipbuf, sizeof(ipbuf));
+  if (PC_PORT) snprintf(portbuf, sizeof(portbuf), "%u", (unsigned)PC_PORT);
+
+  // Create parameter fields
+  WiFiManagerParameter ip_param("pcip", "Receiver IP (e.g. 192.168.2.133)", ipbuf, sizeof(ipbuf));
+  WiFiManagerParameter port_param("pcport", "Receiver Port (e.g. 7000)", portbuf, sizeof(portbuf));
+
+  wm.addParameter(&ip_param);
+  wm.addParameter(&port_param);
+
+  Serial.println("[WIFI] starting WiFiManager autoConnect (opens AP if needed)...");
+  bool res = wm.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS); // blocks until user configures or auto-joins
+  if (!res) {
+    Serial.println("[WIFI] WiFiManager failed to connect or user cancelled.");
+    // Continue: device will try to use any existing remembered WiFi credentials
+  } else {
+    Serial.println("[WIFI] Connected to WiFi via WiFiManager.");
+    // read values entered in portal
+    const char* ipv = ip_param.getValue();
+    const char* portv = port_param.getValue();
+    if (ipv && ipv[0] && looks_like_ip(ipv)) {
+      PC_IP = String(ipv);
+    }
+    if (portv && portv[0] && looks_like_port(portv)) {
+      PC_PORT = (uint16_t)atoi(portv);
+    }
+    // Save back to prefs
+    save_prefs(PC_IP.c_str(), String(PC_PORT).c_str());
+    Serial.printf("[WIFI] saved PC IP=%s port=%u\n", PC_IP.c_str(), (unsigned)PC_PORT);
+  }
+
+  // remove parameters so we can recreate later if needed (WiFiManager retains them otherwise)
+  wm.resetSettings();
+}
+
+// ---------- I2S init ----------
 void i2s_init() {
   i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
@@ -138,7 +217,7 @@ void write_tcp_header(uint32_t seq,
 // ---------- send packet (header + payload) ----------
 bool send_tcp_packet(WiFiClient &client, const uint32_t* payload_words_pointer, size_t payload_bytes)
 {
-  if (!client || !client.connected()) return false;
+  if (!client.connected()) return false;
 
   // write header
   size_t hsent = 0;
@@ -170,9 +249,14 @@ void audioTask(void *pv)
 
   while (true) {
     // ensure TCP connection
-    if (!TCPCLIENT || !TCPCLIENT.connected()) {
+    if (!TCPCLIENT.connected()) {
+      if (!PC_IP.length() || !PC_PORT) {
+        // No receiver configured yet; yield to allow main loop to handle config
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        continue;
+      }
       Serial.println("[TCP] connecting...");
-      if (TCPCLIENT.connect(PC_IP, PC_PORT)) {
+      if (TCPCLIENT.connect(PC_IP.c_str(), PC_PORT)) {
         TCPCLIENT.setNoDelay(true);
         Serial.println("[TCP] connected");
       } else {
@@ -233,9 +317,15 @@ void setup() {
   while (!Serial) delay(5);
   Serial.println("\n=== corrected ESP32 I2S -> TCP streamer ===");
 
-  wifiConnectmanager();
+  // Setup WiFi and allow user to enter receiver IP/port via captive portal
+  setup_wifi_and_params();
+
+  // initialize I2S peripheral
   i2s_init();
+
+  // start audio RT task
   startAudioTask();
+
   Serial.println("setup done");
 }
 
@@ -243,11 +333,13 @@ void loop() {
   static unsigned long last = 0;
   if (millis() - last > 2000) {
     last = millis();
-    Serial.printf("[STAT] WiFi=%s TCP=%s seq=%u sample_idx=%llu\n",
+    Serial.printf("[STAT] WiFi=%s TCP=%s seq=%u sample_idx=%llu PC=%s:%u\n",
                   WiFi.isConnected() ? "OK" : "NO",
                   TCPCLIENT.connected() ? "OK" : "NO",
                   (unsigned)sequence_counter,
-                  (unsigned long long)absolute_sample_index);
+                  (unsigned long long)absolute_sample_index,
+                  PC_IP.length() ? PC_IP.c_str() : "(none)",
+                  (unsigned)PC_PORT);
   }
   delay(100);
 }
