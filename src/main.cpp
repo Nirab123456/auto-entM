@@ -1,6 +1,3 @@
-// corrected_esp32_stream_tcp_i2s_fixed_v9.ino
-// v9: pause audio capture when no receiver (TCP not connected) to avoid ring growth
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -9,17 +6,20 @@
 #include <Preferences.h>
 #include <atomic>
 
-// ---------- user configuration ----------
+// ---------- CONFIG ----------
+const uint8_t BUTTON_PIN = 4; // chosen GPIO for reset button (active LOW, internal pull-up)
+const uint16_t BUTTON_HOLD_MS = 800; // must hold this long to confirm reset
+
 const char* WIFI_SSID = "94 Pembroke Street - 2";
 const char* WIFI_PASS = "welcomehome";
 
-char PC_IP_BUF[40] = "";          // stored IP string (no String across tasks)
+char PC_IP_BUF[40] = "";
 std::atomic<uint16_t> PC_PORT{7000};
 
 const char* WIFI_AP_NAME = "AutoConnectAP";
 const char* WIFI_AP_PASS = "password";
 
-// i2s pins and capture params
+// i2s / audio params
 const uint8_t PIN_CLK = 7;
 const uint8_t PIN_WS  = 15;
 const uint8_t PIN_SD  = 16;
@@ -31,48 +31,56 @@ const uint16_t FRAMES_PER_PACKET = 1024;
 const uint8_t BYTES_PER_SAMPLE = 4;
 
 // derived sizes
-const size_t BYTES_TO_READ = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * 2; // stereo slots (bytes)
+const size_t BYTES_TO_READ = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * 2;
 const size_t PAYLOAD_BYTES  = (size_t)FRAMES_PER_PACKET * BYTES_PER_SAMPLE * NUMBER_CHANNELS;
-const size_t NEEDED_WORDS   = (size_t)FRAMES_PER_PACKET * 2; // words (32-bit) needed
+const size_t NEEDED_WORDS   = (size_t)FRAMES_PER_PACKET * 2;
 
-// header constants (must match receiver)
+// header
 constexpr int HEADER_SIZE = 34;
-const uint32_t HEADER_MAGIC = 0x45535032; // 'ESP2'
+const uint32_t HEADER_MAGIC = 0x45535032;
 const uint16_t FORMAT_INT32_LEFT24 = 1;
 
-// ring buffer parameters (64 from v8)
+// ring
 constexpr size_t RING_SIZE = 64;
 constexpr size_t RING_MASK = RING_SIZE - 1;
 
-// ---------- LARGE BUFFERS (file scope -> BSS) ----------
-static uint32_t i2s_word_slots[FRAMES_PER_PACKET * 2]; // L0,R0,L1,R1 ... (global)
-static uint32_t payload_words[FRAMES_PER_PACKET];      // extracted right-channel words (global)
+// ---------- GLOBAL BUFFERS (BSS, not on task stack) ----------
+static uint32_t i2s_word_slots[FRAMES_PER_PACKET * 2];
+static uint32_t payload_words[FRAMES_PER_PACKET];
 
-static uint32_t ring_payload[RING_SIZE][FRAMES_PER_PACKET]; // payload words per slot
-static uint16_t ring_frames[RING_SIZE];                    // frames in slot
+static uint32_t ring_payload[RING_SIZE][FRAMES_PER_PACKET];
+static uint16_t ring_frames[RING_SIZE];
 static uint64_t ring_first_index[RING_SIZE];
 static uint64_t ring_timestamp[RING_SIZE];
 
-// atomics for ring indices
-std::atomic<size_t> ring_head{0}; // next write index (published after write)
-std::atomic<size_t> ring_tail{0}; // next read index
+// atomics
+std::atomic<size_t> ring_head{0};
+std::atomic<size_t> ring_tail{0};
 
-// networking client (only used by networkTask)
 WiFiClient TCPCLIENT;
 
-// atomics for sequence and sample indices
 std::atomic<uint32_t> sequence_counter{0};
 std::atomic<uint64_t> absolute_sample_index{0};
 
-// header buffer (global)
 static uint8_t header_buf[HEADER_SIZE];
 
 Preferences prefs;
 WiFiManager wm;
 
-// new flag: whether consumer (network) is ready/connected
 std::atomic<bool> consumer_ready{false};
 
+// task handles so we can delete/recreate
+TaskHandle_t audioTaskHandle = NULL;
+TaskHandle_t networkTaskHandle = NULL;
+
+//function call
+void setup_wifi_and_params(); 
+void audioTask(void *pv);
+void networkTask(void *pv);
+
+
+
+// ---------- helpers ----------
 static bool looks_like_ip(const char* s) {
   int a,b,c,d; char tail;
   int n = sscanf(s, "%d.%d.%d.%d%c", &a,&b,&c,&d,&tail);
@@ -99,41 +107,16 @@ void save_prefs(const char* ip, uint16_t port) {
   prefs.end();
 }
 
-void setup_wifi_and_params() {
-  load_prefs();
-
-  char ipbuf[40]; ipbuf[0]=0;
-  char portbuf[16]; portbuf[0]=0;
-  if (PC_IP_BUF[0]) strncpy(ipbuf, PC_IP_BUF, sizeof(ipbuf));
-  uint16_t port_local = PC_PORT.load(std::memory_order_relaxed);
-  if (port_local) snprintf(portbuf, sizeof(portbuf), "%u", (unsigned)port_local);
-
-  WiFiManagerParameter ip_param("pcip", "Receiver IP (e.g. 192.168.2.133)", ipbuf, sizeof(ipbuf));
-  WiFiManagerParameter port_param("pcport", "Receiver Port (e.g. 7000)", portbuf, sizeof(portbuf));
-  wm.addParameter(&ip_param);
-  wm.addParameter(&port_param);
-
-  Serial.println("[WIFI] starting WiFiManager autoConnect (opens AP if needed)...");
-  bool res = wm.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS);
-  if (!res) {
-    Serial.println("[WIFI] WiFiManager failed or user cancelled.");
-  } else {
-    Serial.println("[WIFI] Connected to WiFi via WiFiManager.");
-    const char* ipv = ip_param.getValue();
-    const char* portv = port_param.getValue();
-    if (ipv && ipv[0] && looks_like_ip(ipv)) {
-      strncpy(PC_IP_BUF, ipv, sizeof(PC_IP_BUF)); PC_IP_BUF[sizeof(PC_IP_BUF)-1]=0;
-    }
-    if (portv && portv[0] && looks_like_port(portv)) {
-      PC_PORT.store((uint16_t)atoi(portv), std::memory_order_relaxed);
-    }
-    save_prefs(PC_IP_BUF, PC_PORT.load(std::memory_order_relaxed));
-    Serial.print("[WIFI] saved PC IP=");
-    Serial.println(PC_IP_BUF[0] ? PC_IP_BUF : "(none)");
-    Serial.print("[WIFI] saved PC PORT=");
-    Serial.println((unsigned)PC_PORT.load(std::memory_order_relaxed));
-  }
+// call to clear saved receiver prefs (pc_ip, pc_port)
+void clear_receiver_prefs() {
+  prefs.begin("config", false);
+  prefs.remove("pc_ip");
+  prefs.remove("pc_port");
+  prefs.end();
 }
+
+// reset WiFiManager saved credentials & open portal (blocking)
+// This function will call setup_wifi_and_params() which does autoConnect.
 
 // ---------- I2S init ----------
 void i2s_init() {
@@ -199,6 +182,150 @@ void write_tcp_header(uint32_t seq, uint64_t first_sample_index, uint64_t timest
   header_buf[33] = (uint8_t)((FORMAT_INT32_LEFT24 >> 8) & 0xFF);
 }
 
+
+// ---------- start/stop tasks ----------
+void startTasks() {
+  // create audio task (store handle)
+  const uint32_t audioStack = 16384;
+  if (xTaskCreatePinnedToCore(audioTask, "audioTask", audioStack, NULL, 6, &audioTaskHandle, 1) != pdPASS) {
+    Serial.println("[START] audioTask create failed");
+    audioTaskHandle = NULL;
+  } else {
+    Serial.println("[START] audioTask created");
+  }
+
+  // create network task (store handle)
+  const uint32_t netStack = 8192;
+  if (xTaskCreatePinnedToCore(networkTask, "networkTask", netStack, NULL, 5, &networkTaskHandle, 0) != pdPASS) {
+    Serial.println("[START] networkTask create failed");
+    networkTaskHandle = NULL;
+  } else {
+    Serial.println("[START] networkTask created");
+  }
+}
+
+void stopTasks() {
+  // mark consumer not ready, close socket
+  consumer_ready.store(false, std::memory_order_release);
+  if (TCPCLIENT.connected()) TCPCLIENT.stop();
+
+  // delete audio task
+  if (audioTaskHandle != NULL) {
+    Serial.println("[STOP] deleting audioTask");
+    vTaskDelete(audioTaskHandle);
+    audioTaskHandle = NULL;
+  }
+  // delete network task
+  if (networkTaskHandle != NULL) {
+    Serial.println("[STOP] deleting networkTask");
+    vTaskDelete(networkTaskHandle);
+    networkTaskHandle = NULL;
+  }
+
+  // small delay to allow RTOS housekeeping
+  delay(50);
+}
+
+// ---------- WiFiManager setup (same as before) ----------
+void setup_wifi_and_params() {
+  load_prefs();
+
+  // Build initial values for the portal input fields
+  char ipbuf[40]; ipbuf[0]=0;
+  char portbuf[16]; portbuf[0]=0;
+  if (PC_IP_BUF[0]) strncpy(ipbuf, PC_IP_BUF, sizeof(ipbuf));
+  uint16_t port_local = PC_PORT.load(std::memory_order_relaxed);
+  if (port_local) snprintf(portbuf, sizeof(portbuf), "%u", (unsigned)port_local);
+
+  // Create a fresh local WiFiManager instance for each portal open.
+  // This avoids stale internal state that can hide custom parameters.
+  WiFiManager wm_local;
+
+  // Add custom parameters to the local instance (must outlive autoConnect call).
+  WiFiManagerParameter ip_param("pcip",  "Receiver IP (e.g. 192.168.2.133)", ipbuf,  sizeof(ipbuf));
+  WiFiManagerParameter port_param("pcport","Receiver Port (e.g. 7000)",              portbuf, sizeof(portbuf));
+  wm_local.addParameter(&ip_param);
+  wm_local.addParameter(&port_param);
+
+  Serial.println("[WIFI] starting WiFiManager autoConnect (opens AP if needed)...");
+  // autoConnect will block and open the portal if necessary
+  bool res = wm_local.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS);
+
+  if (!res) {
+    Serial.println("[WIFI] WiFiManager failed or user cancelled.");
+    // ensure consumer knows WiFi is down
+    consumer_ready.store(false, std::memory_order_release);
+    return;
+  }
+
+  Serial.println("[WIFI] Connected to WiFi via WiFiManager.");
+
+  // Read the values the user entered into the IP/port fields
+  const char* ipv = ip_param.getValue();
+  const char* portv = port_param.getValue();
+  if (ipv && ipv[0] && looks_like_ip(ipv)) {
+    strncpy(PC_IP_BUF, ipv, sizeof(PC_IP_BUF));
+    PC_IP_BUF[sizeof(PC_IP_BUF)-1] = '\0';
+  } else {
+    PC_IP_BUF[0] = '\0';
+  }
+
+  if (portv && portv[0] && looks_like_port(portv)) {
+    PC_PORT.store((uint16_t)atoi(portv), std::memory_order_relaxed);
+  } else {
+    PC_PORT.store(0, std::memory_order_relaxed);
+  }
+
+  // persist into preferences
+  save_prefs(PC_IP_BUF, PC_PORT.load(std::memory_order_relaxed));
+
+  Serial.print("[WIFI] saved PC IP=");
+  Serial.println(PC_IP_BUF[0] ? PC_IP_BUF : "(none)");
+  Serial.print("[WIFI] saved PC PORT=");
+  Serial.println((unsigned)PC_PORT.load(std::memory_order_relaxed));
+
+  // mark consumer as not connected yet — networkTask will attempt to connect using the new values.
+  consumer_ready.store(false, std::memory_order_release);
+}
+
+
+// ---------- Reset to config portal flow ----------
+void startConfigPortalFromButton() {
+  Serial.println("[RESET] button: resetting WiFiManager & saved receiver prefs");
+
+  // stop tasks and network
+  stopTasks();
+
+  // clear receiver prefs stored separately
+  clear_receiver_prefs();
+
+  // clear WiFiManager's saved AP credentials (makes autoConnect open AP)
+  wm.resetSettings();
+
+  // disconnect WiFi fully
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_STA);
+
+  // small delay for hardware to settle
+  delay(200);
+
+  // Call setup_wifi_and_params which will call wm.autoConnect (create AP/portal)
+  setup_wifi_and_params();
+
+  // reset ring bookkeeping (clear buffer, indexes)
+  ring_head.store(0);
+  ring_tail.store(0);
+  for (size_t i=0;i<RING_SIZE;++i) {
+    ring_frames[i] = 0;
+    ring_first_index[i] = 0;
+    ring_timestamp[i] = 0;
+  }
+
+  // restart tasks
+  startTasks();
+  Serial.println("[RESET] done; streaming restarts after portal/config is completed");
+}
+
 // ---------- audioTask (producer) ----------
 void audioTask(void *pv) {
   (void)pv;
@@ -212,15 +339,13 @@ void audioTask(void *pv) {
   bool paused = false;
 
   while (true) {
-    // If consumer isn't ready (no TCP connected), pause capture to avoid ring growth.
     if (!consumer_ready.load(std::memory_order_acquire)) {
       if (!paused) {
         Serial.println("[TASK] pausing capture (no receiver connected)");
         paused = true;
       }
-      // discard DMA buffer so it doesn't overflow and sleep a bit
       i2s_zero_dma_buffer(I2S_NUM_0);
-      vTaskDelay(pdMS_TO_TICKS(200)); // less-frequent check while no receiver
+      vTaskDelay(pdMS_TO_TICKS(200));
       continue;
     } else {
       if (paused) {
@@ -229,7 +354,6 @@ void audioTask(void *pv) {
       }
     }
 
-    // read from I2S (blocking)
     size_t bytes_read = 0;
     esp_err_t res = i2s_read(I2S_NUM_0, (void*)i2s_word_slots, BYTES_TO_READ, &bytes_read, portMAX_DELAY);
     if (res != ESP_OK || bytes_read == 0) {
@@ -243,16 +367,14 @@ void audioTask(void *pv) {
 
     size_t word_count = bytes_read / 4;
     size_t available_frames = (word_count >= NEEDED_WORDS) ? FRAMES_PER_PACKET : (word_count / 2);
-    if (available_frames > FRAMES_PER_PACKET) available_frames = FRAMES_PER_PACKET; // defensive
+    if (available_frames > FRAMES_PER_PACKET) available_frames = FRAMES_PER_PACKET;
 
-    // check ring capacity: *do not* advance head if full -> drop newest
+    // check ring capacity: drop newest if full
     size_t head = ring_head.load(std::memory_order_relaxed);
     size_t tail = ring_tail.load(std::memory_order_acquire);
     size_t nextHead = head + 1;
 
     if ((nextHead - tail) > RING_SIZE) {
-      // ring full -> drop newest packet to keep latency bounded
-      // advance sample index because we've consumed audio but will not send it
       absolute_sample_index.fetch_add((uint64_t)available_frames, std::memory_order_relaxed);
       static unsigned drop_count = 0;
       if ((++drop_count % 10) == 0) {
@@ -265,10 +387,8 @@ void audioTask(void *pv) {
       continue;
     }
 
-    // reserve the slot (single producer, safe)
     size_t slot = head & RING_MASK;
 
-    // copy payload into reserved slot
     if (available_frames == FRAMES_PER_PACKET) {
       for (size_t i = 0; i < FRAMES_PER_PACKET; ++i) ring_payload[slot][i] = i2s_word_slots[i * 2 + 1];
     } else {
@@ -276,7 +396,6 @@ void audioTask(void *pv) {
       for (size_t i = available_frames; i < FRAMES_PER_PACKET; ++i) ring_payload[slot][i] = 0;
     }
 
-    // metadata
     uint64_t first_index = absolute_sample_index.load(std::memory_order_relaxed);
     uint64_t ts = (uint64_t)esp_timer_get_time();
 
@@ -284,10 +403,7 @@ void audioTask(void *pv) {
     ring_first_index[slot] = first_index;
     ring_timestamp[slot] = ts;
 
-    // publish head
     ring_head.store(nextHead, std::memory_order_release);
-
-    // advance the sample index (we consumed these samples)
     absolute_sample_index.fetch_add((uint64_t)available_frames, std::memory_order_relaxed);
 
     taskYIELD();
@@ -308,14 +424,9 @@ void networkTask(void *pv) {
     size_t tail = ring_tail.load(std::memory_order_acquire);
     size_t head = ring_head.load(std::memory_order_acquire);
 
-    // update consumer_ready early if we lost connection
-    if (!TCPCLIENT.connected()) {
-      consumer_ready.store(false, std::memory_order_release);
-    }
+    if (!TCPCLIENT.connected()) consumer_ready.store(false, std::memory_order_release);
 
     if (tail == head) {
-      // nothing to send - but ensure TCP connect logic still runs
-      // try to connect if not connected
       if (!TCPCLIENT.connected()) {
         strncpy(local_ip, PC_IP_BUF, sizeof(local_ip));
         local_ip[sizeof(local_ip)-1] = 0;
@@ -337,19 +448,16 @@ void networkTask(void *pv) {
             Serial.println("[NET] connected (idle)");
           }
         } else {
-          // no receiver configured or wifi down
           consumer_ready.store(false, std::memory_order_release);
           vTaskDelay(pdMS_TO_TICKS(100));
           continue;
         }
       } else {
-        // connected but no data to send
         vTaskDelay(pdMS_TO_TICKS(2));
         continue;
       }
     }
 
-    // re-load indices (consumer)
     tail = ring_tail.load(std::memory_order_acquire);
     head = ring_head.load(std::memory_order_acquire);
     if (tail == head) continue;
@@ -357,12 +465,10 @@ void networkTask(void *pv) {
     size_t slot = tail & RING_MASK;
     uint16_t frames = ring_frames[slot];
     if (frames == 0 || frames > FRAMES_PER_PACKET) {
-      // corrupted/invalid -> advance tail defensively
       ring_tail.store(tail + 1, std::memory_order_release);
       continue;
     }
 
-    // ensure TCP connected (try to reconnect if needed)
     if (!TCPCLIENT.connected()) {
       strncpy(local_ip, PC_IP_BUF, sizeof(local_ip));
       local_ip[sizeof(local_ip)-1] = 0;
@@ -389,13 +495,11 @@ void networkTask(void *pv) {
       }
     }
 
-    // compose header
     uint32_t seq = sequence_counter.fetch_add(1, std::memory_order_relaxed) + 1;
     uint64_t first_index = ring_first_index[slot];
     uint64_t ts = ring_timestamp[slot];
     write_tcp_header(seq, first_index, ts, (uint16_t)frames);
 
-    // send header
     size_t hsent = 0;
     bool ok = true;
     while (hsent < (size_t)HEADER_SIZE) {
@@ -404,7 +508,6 @@ void networkTask(void *pv) {
       hsent += (size_t)w;
     }
 
-    // send payload
     if (ok) {
       const uint8_t *p = (const uint8_t*)ring_payload[slot];
       size_t payload_bytes = (size_t)frames * BYTES_PER_SAMPLE * (size_t)NUMBER_CHANNELS;
@@ -421,10 +524,8 @@ void networkTask(void *pv) {
       Serial.println("[NET] send failed, closing client");
       TCPCLIENT.stop();
       consumer_ready.store(false, std::memory_order_release);
-      // drop this slot to avoid spinning on it
       ring_tail.store(tail + 1, std::memory_order_release);
     } else {
-      // success -> advance tail
       ring_tail.store(tail + 1, std::memory_order_release);
     }
 
@@ -433,29 +534,14 @@ void networkTask(void *pv) {
   vTaskDelete(NULL);
 }
 
-// ---------- setup/loop and task starters ----------
-void startTasks() {
-  // audioTask pinned to core 1
-  const uint32_t audioStack = 16384; // bytes
-  if (xTaskCreatePinnedToCore(audioTask, "audioTask", audioStack, NULL, 6, NULL, 1) != pdPASS) {
-    Serial.println("[START] audioTask create failed");
-  } else {
-    Serial.println("[START] audioTask created");
-  }
-
-  // networkTask pinned to core 0
-  const uint32_t netStack = 8192;
-  if (xTaskCreatePinnedToCore(networkTask, "networkTask", netStack, NULL, 5, NULL, 0) != pdPASS) {
-    Serial.println("[START] networkTask create failed");
-  } else {
-    Serial.println("[START] networkTask created");
-  }
-}
-
+// ---------- setup/loop ----------
 void setup() {
   Serial.begin(115200);
   while (!Serial) delay(5);
-  Serial.println("\n=== corrected ESP32 I2S -> TCP streamer (v9 pause-no-receiver) ===");
+  Serial.println("\n=== corrected ESP32 I2S -> TCP streamer (v10 button reset) ===");
+
+  // button input
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   setup_wifi_and_params();
   i2s_init();
@@ -474,8 +560,29 @@ void setup() {
   Serial.println("setup done");
 }
 
+// Helper: read button and check hold
+bool buttonPressedHold() {
+  // active LOW => pressed when digitalRead == LOW
+  if (digitalRead(BUTTON_PIN) != LOW) return false;
+  unsigned long t0 = millis();
+  while (digitalRead(BUTTON_PIN) == LOW) {
+    if (millis() - t0 >= BUTTON_HOLD_MS) return true;
+    delay(10);
+  }
+  return false;
+}
+
 void loop() {
   static unsigned long last = 0;
+
+  // check for long-press reset
+  if (buttonPressedHold()) {
+    // small debounce done inside; call reset flow
+    startConfigPortalFromButton();
+    // small delay to avoid re-triggering immediately
+    delay(500);
+  }
+
   if (millis() - last > 2000) {
     last = millis();
     String status = "[STAT] WiFi=";
@@ -502,5 +609,5 @@ void loop() {
     status += consumer_ready.load(std::memory_order_relaxed) ? " [consumer=READY]" : " [consumer=NOT_READY]";
     Serial.println(status);
   }
-  delay(100);
+  delay(50);
 }
