@@ -21,7 +21,7 @@ import signal
 
 # --------------------------- CONFIG ---------------------------
 LISTEN_HOST = "0.0.0.0"
-LISTEN_PORT = 9000         # must match PC_PORT on ESP
+LISTEN_PORT = 7070         # must match PC_PORT on ESP
 
 # Buffering / playback config
 SAMPLE_RATE = 48000        # must match the ESP setting
