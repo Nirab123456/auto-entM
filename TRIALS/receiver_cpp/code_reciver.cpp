@@ -28,7 +28,7 @@
 
 // ----------------- Config -----------------
 static const char* LISTEN_ADDR = "0.0.0.0";
-static const uint16_t LISTEN_PORT = 7000; // match ESP PC_PORT
+static const uint16_t LISTEN_PORT = 7070; // match ESP PC_PORT
 static const uint16_t HTTP_PORT = 8080;   // control UI
 
 // Must match ESP header layout

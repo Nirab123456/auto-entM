@@ -3,5 +3,4 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-error.txt
-internal_log.txt
+/error
