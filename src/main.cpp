@@ -334,6 +334,12 @@ void audiotask(void* pv)
 
 void networktask(void* pv)
 {
+    (void)pv;
+    unsigned long now = millis();
+    IPAddress remote_ip;
+    uint16_t remote_port = 0;
+    unsigned long last_conn_attempt = now;
+    consumer_ready.store(false,std::memory_order_release);
 
 }
 
@@ -388,4 +394,48 @@ void startconfigportal_button()
     clear_ring_nd_rst_indices();
     starttask();
     Serial.println("RESET: RESET DONE");
+}
+
+void i2s_init()
+{
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = SAMPLE_RATE,
+        .bits_per_sample = I2S_BITS,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S|I2S_COMM_FORMAT_I2S_MSB),
+        .intr_alloc_flags = 0,
+        .dma_buf_count = 6,
+        .dma_buf_len = FRAMES_PER_PACKET / 2,
+        .use_apll = true,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0
+    };
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = PIN_CLK,
+        .ws_io_num = PIN_WS,
+        .data_out_num = I2S_PIN_NO_CHANGE,
+        .data_in_num = PIN_SD
+    };
+    esp_err_t err = i2s_driver_install(I2S_NUM_0,&i2s_config,0,NULL);
+    if (err != ESP_OK)
+    {
+        Serial.printf("I2S : Driver instalation ");
+        while (1)
+        {
+            delay(500);
+        }
+        
+    }
+    err = i2s_set_pin(I2S_NUM_0,&pin_config);
+    if (err != ESP_OK)
+    {
+        Serial.println("I2S : SETUP PIN FAILED");
+        while (1)
+        {
+            delay(500);
+        }    
+    }
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    Serial.println("I2S : INITIALIZED (APLL = TRUE)");
 }
