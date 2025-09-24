@@ -30,7 +30,9 @@ const size_t NEEDED_WORDS = ((size_t)FRAMES_PER_PACKET*2);
 constexpr int HEADER_SIZE = 34;
 const  uint32_t HEADER_MAGIC = 0x45535032;
 const uint16_t FORMAT_INT32_LEFT24 =1;
-const uint8_t HEADER_BUFFER[HEADER_SIZE];
+static uint8_t HEADER_BUFFER[HEADER_SIZE];
+const uint8_t MAIN_COPY_BYTES = 4;
+const uint8_t MIN_BITS_SHIFT = 8;
 
 //buffers
 static uint32_t I2S_WORD_SLOTS[FRAMES_PER_PACKET*2];
@@ -331,6 +333,79 @@ void audiotask(void* pv)
     vTaskDelete(NULL);
 }
 
+void write_tcp_header(uint32_t seq, uint64_t first_sample_index,uint64_t timestamp_us, uint16_t num_frames)
+{
+    uint8_t start_track = 0;
+    uint8_t looper = 0;
+    
+    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
+    {
+        looper = start_track;
+        HEADER_BUFFER[looper +i] = ((uint8_t)((HEADER_MAGIC >> (MIN_BITS_SHIFT*i))&0xff));
+    }
+    start_track += MAIN_COPY_BYTES;
+    looper = 0;
+    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
+    {
+        looper = start_track;
+        HEADER_BUFFER[looper+i] = ((uint8_t)((seq >>(MIN_BITS_SHIFT*i))&0xff));
+    }
+    looper = 0;
+    start_track += MAIN_COPY_BYTES;
+    for (size_t i = 0; i < MAIN_COPY_BYTES*2; i++)
+    {
+        looper = start_track;
+        HEADER_BUFFER[looper + i] = ((uint8_t)((first_sample_index >> (MIN_BITS_SHIFT*i))&0xff));
+    }
+    looper = 0;
+    start_track += MAIN_COPY_BYTES*2;
+    for (size_t i = 0; i < MAIN_COPY_BYTES*2; i++)
+    {
+        looper = start_track;
+        HEADER_BUFFER[looper+i] = ((uint8_t)((timestamp_us>>(MIN_BITS_SHIFT*i))&0xff));
+    }
+    looper = 0;
+    start_track += MAIN_COPY_BYTES*2;
+    HEADER_BUFFER[start_track] = (uint8_t)(num_frames&0xff);
+    HEADER_BUFFER[++start_track] = (uint8_t)((num_frames >> MIN_BITS_SHIFT)& 0xff);
+    HEADER_BUFFER[++start_track] = (uint8_t)(NUMBERS_OF_CHANNELS);
+    HEADER_BUFFER[++start_track] = (uint8_t)(BYTES_PER_SAMPLE);
+    start_track++;
+    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
+    {
+        looper = start_track;
+        HEADER_BUFFER[looper+i] = ((uint8_t)((SAMPLE_RATE>>(MIN_BITS_SHIFT*i))&0xff));
+    }
+    looper = 0;
+    start_track += MAIN_COPY_BYTES;
+    HEADER_BUFFER[start_track] = ((uint8_t)(FORMAT_INT32_LEFT24 &0xff));
+    HEADER_BUFFER[++start_track] = ((uint8_t)((FORMAT_INT32_LEFT24>>8)&0xff));
+
+}
+
+static bool connect_to_reciver_ip(const IPAddress &ip, uint16_t port)
+{
+    if (ip==IPAddress(0,0,0,0) || port == 0)
+    {
+        return false;
+    }
+
+    TCPCLIENT.stop();
+    delay(10);
+    bool con_ok = TCPCLIENT.connect(ip,port);
+    if (!con_ok || !TCPCLIENT.connected())
+    {
+        TCPCLIENT.stop();
+        Serial.println("REXIVER : CONNECTION failed");
+        return false;
+    }
+    TCPCLIENT.setNoDelay(true);
+    Serial.print("Reciver : connected to ip : ");
+    Serial.print(String(ip));
+    Serial.print("\n");
+    return true;
+}
+
 
 void networktask(void* pv)
 {
@@ -338,9 +413,81 @@ void networktask(void* pv)
     unsigned long now = millis();
     IPAddress remote_ip;
     uint16_t remote_port = 0;
-    unsigned long last_conn_attempt = now;
-    consumer_ready.store(false,std::memory_order_release);
+    unsigned long last_conn_attempt = 0;
 
+    while (true)
+    {
+        globalreciver_config.get(remote_ip,remote_port);
+        if(!TCPCLIENT.connected());
+        {
+            unsigned long now = millis();
+            if (globalreciver_config.isvalid()&&WiFi.isConnected()&& (now - last_conn_attempt >= 200))
+            {
+                last_conn_attempt = now;
+                consumer_ready.store(false, std::memory_order_release);
+                clear_ring_nd_rst_indices();
+                if (connect_to_reciver_ip(remote_ip,remote_port))
+                {
+                    consumer_ready.store(true,std::memory_order_release);
+                }
+                else
+                {
+                    consumer_ready.store(false, std::memory_order_release);
+                    vTaskDelay(pdMS_TO_TICKS(20));
+                    continue;
+                }
+            }
+        }
+        size_t tail = Ring_tail.load(std::memory_order_acquire);
+        size_t head = Ring_head.load(std::memory_order_acquire);
+        if (tail==head)
+        {
+            //nothing to send
+            vTaskDelay(pdMS_TO_TICKS(2));
+            continue;
+        }
+        size_t slot = tail & RING_MASK;
+        uint16_t frames  = RING_FRAMES[slot];
+        if (frames == 0 || frames > FRAMES_PER_PACKET)
+        {
+            Ring_tail.store(tail+1,std::memory_order_release);
+            continue;
+        }
+        uint32_t seq = Sequence_counter.fetch_add(1,std::memory_order_relaxed);
+        uint64_t first_index = RING_FIRST_INDEX[slot];
+        uint64_t ts = RING_TIMESTAMP[slot];
+        write_tcp_header(seq,first_index,ts,(uint16_t)frames);
+        
+        size_t hsent = 0;
+        bool ok = true;
+        while (hsent<(size_t)HEADER_SIZE)
+        {
+            int written = TCPCLIENT.write(HEADER_BUFFER+hsent,HEADER_SIZE-hsent);
+            if (written <= 0)
+            {
+                ok =false;
+                break;
+            }
+            hsent += (size_t)written;
+            size_t sent = 0;
+            if ((sent%1024)== 0)
+            {
+                taskYIELD();
+            }
+        }
+        if (!ok)
+        {
+            Serial.println("NET: Failed closing soket clewaning buffers");
+            TCPCLIENT.stop();
+            consumer_ready.store(false,std::memory_order_release);
+            clear_ring_nd_rst_indices();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+        Ring_tail.store(tail+1,std::memory_order_release);
+        taskYIELD();
+    }
+    vTaskDelete(NULL);
 }
 
 
@@ -376,8 +523,24 @@ void starttask()
 
 void stoptask()
 {
-
-
+    consumer_ready.store(false,std::memory_order_release);
+    if (TCPCLIENT.connected())
+    {
+        TCPCLIENT.stop();
+    }
+    if (audiohandleTASK != NULL)
+    {
+        vTaskDelete(audiohandleTASK);
+        audiohandleTASK = NULL;
+        Serial.println("TASK :: AUDIOTASK :: Deleted");
+    }
+    if (networkhandleTASK != NULL)
+    {
+        vTaskDelete(networkhandleTASK);
+        networkhandleTASK = NULL;
+        Serial.println("TASK :: NETWORKTASK :: Deleted");
+    }
+    delay(50);
 }
 
 void startconfigportal_button()
