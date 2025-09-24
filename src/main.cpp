@@ -602,3 +602,40 @@ void i2s_init()
     i2s_zero_dma_buffer(I2S_NUM_0);
     Serial.println("I2S : INITIALIZED (APLL = TRUE)");
 }
+bool button_pressed_hold()
+{
+    inline int res = digitalRead(RESET_WIFI_BUTTON_PIN);
+    if (res != LOW) return false;
+    unsigned long time_local = millis();
+    while (res == LOW)
+    {
+        if (millis()-time_local >= BUTTON_HOLD_MS)
+        {
+            return true;
+        }
+        delay(10);
+    }
+    return false;
+    
+}
+void setup()
+{
+    Serial.begin(115200);
+    while (!Serial)
+    {
+        delay(5);
+    }
+    Serial.println("SETUP : INETIALIZING");
+    pinMode(RESET_WIFI_BUTTON_PIN,INPUT_PULLUP);
+    globalreciver_config.begin();
+    setup_wifi_and_params();
+    i2s_init();
+    clear_ring_nd_rst_indices();
+    consumer_ready.store(false);
+    starttask();
+    Serial.println("SETUP : COMPLEATED :-)");
+    
+}
+
+
+
