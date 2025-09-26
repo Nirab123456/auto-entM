@@ -9,8 +9,6 @@
 #include <Preferences.h>
 #include "button_p.h"
 // configurations
-const uint8_t RESET_WIFI_BUTTON_PIN = 4;
-const uint16_t BUTTON_HOLD_MS = 800;
 const char* WIFI_AP_NAME  = "auto-antm";
 const char* WIFI_AP_PASS = "password";
 
@@ -603,22 +601,7 @@ void i2s_init()
     i2s_zero_dma_buffer(I2S_NUM_0);
     Serial.println("I2S : INITIALIZED (APLL = TRUE)");
 }
-bool button_pressed_hold()
-{
-    inline int res = digitalRead(RESET_WIFI_BUTTON_PIN);
-    if (res != LOW) return false;
-    unsigned long time_local = millis();
-    while (res == LOW)
-    {
-        if (millis()-time_local >= BUTTON_HOLD_MS)
-        {
-            return true;
-        }
-        delay(10);
-    }
-    return false;
-    
-}
+
 void setup()
 {
     Serial.begin(115200);
@@ -639,5 +622,25 @@ void setup()
     
 }
 
+void loop()
+{
+    static unsigned long last = 0;
+    if (millis()-last>2000)
+    {
+        last = millis();
+        if (audiohandleTASK == NULL || networkhandleTASK == NULL)
+        {
+            Serial.println("TASK : MISSING\nTrying to recreate......");
+            starttask();
+        }
+        
+    }
+    // if (button_pressed_hold)
+    // {
+    //     startconfigportal_button();
+    //     delay(500);
+    // }
+    
+}
 
 
