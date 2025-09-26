@@ -5,4 +5,4 @@
 #include "button_p.h"
 
 void startconfigportal_button();
-void setup_button_isr_and_task();
+void setup_button_isr_TASK();

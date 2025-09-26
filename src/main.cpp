@@ -627,7 +627,7 @@ void setup()
         delay(5);
     }
     Serial.println("SETUP : INETIALIZING");
-    setup_button_isr_and_task();
+    setup_button_isr_TASK();
     // pinMode(RESET_WIFI_BUTTON_PIN,INPUT_PULLUP);
     globalreciver_config.begin();
     setup_wifi_and_params();
