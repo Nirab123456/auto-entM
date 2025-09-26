@@ -7,6 +7,7 @@
 #include <atomic>
 #include <mutex>
 #include <Preferences.h>
+#include "button_p.h"
 // configurations
 const uint8_t RESET_WIFI_BUTTON_PIN = 4;
 const uint16_t BUTTON_HOLD_MS = 800;
@@ -626,7 +627,8 @@ void setup()
         delay(5);
     }
     Serial.println("SETUP : INETIALIZING");
-    pinMode(RESET_WIFI_BUTTON_PIN,INPUT_PULLUP);
+    setup_button_isr_and_task();
+    // pinMode(RESET_WIFI_BUTTON_PIN,INPUT_PULLUP);
     globalreciver_config.begin();
     setup_wifi_and_params();
     i2s_init();
