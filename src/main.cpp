@@ -59,7 +59,8 @@ std::atomic<bool>consumer_ready{false};
 //taskhandlers
 TaskHandle_t audiohandleTASK = NULL;
 TaskHandle_t networkhandleTASK = NULL;
-
+TaskHandle_t printtaskHANDLE = NULL;
+const uint32_t PRINT_INTERVAL_MS =2000;
 
 WiFiClient TCPCLIENT;
 
@@ -619,28 +620,55 @@ void setup()
     consumer_ready.store(false);
     startTASK();
     startmonitorTASK();
+    printhandleTASK();
     Serial.println("SETUP : COMPLEATED :-)");
     
 }
-
+void printTASK(void*pv)
+{
+    (void)pv;
+    const TickType_t delayTicks = pdMS_TO_TICKS(PRINT_INTERVAL_MS);
+    for (;;)
+    {
+        vTaskDelay(delayTicks);
+        IPAddress ip;
+        uint16_t port;
+        globalreciver_config.get(ip,port);
+        size_t head = Ring_head.load(std::memory_order_relaxed);
+        size_t tail = Ring_tail.load(std::memory_order_relaxed);
+        unsigned occupancy = 0;
+        if (head>= tail)
+        {
+            occupancy = ((unsigned)(head-tail));
+        }
+        if (occupancy > (unsigned)RING_SIZE)
+        {
+            occupancy = (unsigned)RING_SIZE;
+        }
+        unsigned long long sample_index = (unsigned long long)Absolute_sample_index.load(
+            std::memory_order_relaxed);
+        String s;
+        s.reserve(300);
+        s+= "WIFI SETUP : ";
+        s+=(WiFi.isConnected()?"ok":"no");
+        s+= " Ring : ";
+        s+=String(occupancy);
+        s+= "/";
+        s+=String((unsigned)RING_SIZE);
+        s+= " Sample index : ";
+        s+= String(sample_index);
+        s+= " PC IP: ";
+        s+= (ip? ip.toString():String("None"));
+        s+= " port :";
+        s+= String((unsigned)port);
+        s+= " FreeHeap : ";
+        s+= String((unsigned)esp_get_free_heap_size());
+        s+= consumer_ready.load(std::memory_order_relaxed)? "Consumer : READY" : "Consumer : Inactive";
+        Serial.println(s);
+    }
+}
 void loop()
 {
-    // static unsigned long last = 0;
-    // if (millis()-last>2000)
-    // {
-    //     last = millis();
-    //     if (audiohandleTASK == NULL || networkhandleTASK == NULL)
-    //     {
-    //         Serial.println("TASK : MISSING\nTrying to recreate......");
-    //         startTASK();
-    //     }
-        
-    // }
-    // if (button_pressed_hold)
-    // {
-    //     startconfigportal_button();
-    //     delay(500);
-    // }
     
 }
 

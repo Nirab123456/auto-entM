@@ -11,9 +11,9 @@ static volatile TickType_t isr_last_edge_tick =  0;
 static const TickType_t debounce_ticks = pdMS_TO_TICKS(20);
 const uint8_t RESET_WIFI_BUTTON_PIN = 4;
 const uint16_t BUTTON_HOLD_MS = 800;
-const TickType_t delayTicks = pdMS_TO_TICKS(2000);
-const uint16_t monitorStack =4096;
-
+const TickType_t DELAYTICKS = pdMS_TO_TICKS(2000);
+const uint16_t NONITOR_STACK =4096;
+const uint16_t PRINT_STACK = 4096;
 //taskmonitot
 TaskHandle_t monitorhandleTASK = NULL;
 
@@ -73,7 +73,7 @@ void IRAM_ATTR button_isr_handler()
  {
   button_semaphore = xSemaphoreCreateBinary();
   attachInterrupt(digitalPinToInterrupt(RESET_WIFI_BUTTON_PIN),button_isr_handler,CHANGE);
-  BaseType_t ok = xTaskCreate(button_handle_TASK,"button_handler_task",3072,NULL,2,NULL);
+  BaseType_t ok = xTaskCreate(button_handle_TASK,"button_handler_task",3072,NULL,3,NULL);
   if (ok!= pdPASS)
   {
     Serial.println("BUTTON: Task create failed");
@@ -91,7 +91,7 @@ void IRAM_ATTR button_isr_handler()
   (void)pv;
   for (;;)
   {
-    vTaskDelay(delayTicks);
+    vTaskDelay(DELAYTICKS);
     if (audiohandleTASK ==NULL || networkhandleTASK == NULL)
     {
       startTASK();
@@ -113,9 +113,9 @@ void IRAM_ATTR button_isr_handler()
     BaseType_t ok = xTaskCreatePinnedToCore(
       monitorTASK,
       "monitorTASK",
-      monitorStack,
+      NONITOR_STACK,
       NULL,
-      1,
+      2,
       &monitorhandleTASK,
       0      
     );
@@ -132,5 +132,23 @@ void IRAM_ATTR button_isr_handler()
   else
   {
     Serial.println("MONITOR TASK : Already running");
+  }
+ }
+
+
+ void printhandleTASK()
+ {
+  if (printtaskHANDLE==NULL)
+  {
+    BaseType_t ok = xTaskCreatePinnedToCore(printTASK,"printTASK",PRINT_STACK,NULL,1,&printtaskHANDLE,1);
+    if (ok != pdPASS)
+    {
+      Serial.println("PRINT TASK : Filure creating");
+      printtaskHANDLE = NULL;
+    }
+    else
+    {
+      Serial.println("PRINT TASK :Created");
+    }    
   }
  }
