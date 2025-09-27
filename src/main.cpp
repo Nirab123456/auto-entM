@@ -618,23 +618,24 @@ void setup()
     clear_ring_nd_rst_indices();
     consumer_ready.store(false);
     startTASK();
+    startmonitorTASK();
     Serial.println("SETUP : COMPLEATED :-)");
     
 }
 
 void loop()
 {
-    static unsigned long last = 0;
-    if (millis()-last>2000)
-    {
-        last = millis();
-        if (audiohandleTASK == NULL || networkhandleTASK == NULL)
-        {
-            Serial.println("TASK : MISSING\nTrying to recreate......");
-            startTASK();
-        }
+    // static unsigned long last = 0;
+    // if (millis()-last>2000)
+    // {
+    //     last = millis();
+    //     if (audiohandleTASK == NULL || networkhandleTASK == NULL)
+    //     {
+    //         Serial.println("TASK : MISSING\nTrying to recreate......");
+    //         startTASK();
+    //     }
         
-    }
+    // }
     // if (button_pressed_hold)
     // {
     //     startconfigportal_button();
