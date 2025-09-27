@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include "esp_timer.h"
 #include <mutex>
-#include <button_p.h>
+#include <audio_helper.h>
 // semaphore + ISR timestamp globals
 static SemaphoreHandle_t buttonSem = NULL;            // given from ISR to handler task
 static volatile TickType_t isr_press_tick = 0;        // tick at falling-edge (press start)
@@ -82,4 +82,61 @@ void setup_button_isr_and_task() {
   BaseType_t ok = xTaskCreate(buttonHandlerTask, "btnHandler", 3072, NULL, 2, NULL);
   if (ok != pdPASS) Serial.println("[BUTTON] handler task create failed");
   else Serial.println("[BUTTON] ISR + handler task installed");
+}
+
+
+
+// ---------------- monitor task ----------------
+TaskHandle_t monitorTaskHandle = NULL;
+
+void monitorTask(void *pv) {
+  (void)pv;
+  const TickType_t delayTicks = pdMS_TO_TICKS(2000); // 2s
+  for (;;) {
+    // Sleep for 2 seconds
+    vTaskDelay(delayTicks);
+
+    // Check for missing tasks and attempt to recreate them.
+    // Note: startTasks() in your code already checks audio/network handles
+    // and only creates missing ones, so calling it here is safe.
+    if (audioTaskHandle == NULL || networkTaskHandle == NULL) {
+      Serial.println("[MON] detected missing task(s), attempting to (re)create...");
+      // startTasks() does its own checks and prints; call it from this task context.
+      startTasks();
+    }
+
+    // Optional: you can also log stack high-water marks to help debug small stacks:
+    if (audioTaskHandle != NULL) {
+      UBaseType_t hw = uxTaskGetStackHighWaterMark(audioTaskHandle);
+      Serial.printf("[MON] audioTask stack high-water: %u\n", (unsigned)hw);
+    }
+  }
+
+  // never reached, but tidy
+  vTaskDelete(NULL);
+}
+
+// helper to create the monitor task (call from setup)
+void startMonitorTask() {
+  if (monitorTaskHandle == NULL) {
+    // Stack 4096 bytes is plenty for this light-weight monitor; low priority (1).
+    const uint32_t monitorStack = 4096;
+    BaseType_t ok = xTaskCreatePinnedToCore(
+      monitorTask,         // task function
+      "monitorTask",       // name
+      monitorStack,        // stack size in bytes
+      NULL,                // param
+      1,                   // priority (low)
+      &monitorTaskHandle,  // handle
+      0                    // pin to core 0 (or 1 if you prefer)
+    );
+    if (ok != pdPASS) {
+      Serial.println("[MON] Failed to create monitor task");
+      monitorTaskHandle = NULL;
+    } else {
+      Serial.println("[MON] monitor task created");
+    }
+  } else {
+    Serial.println("[MON] monitor task already running");
+  }
 }
