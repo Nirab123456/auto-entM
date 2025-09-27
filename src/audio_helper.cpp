@@ -11,7 +11,11 @@ static volatile TickType_t isr_last_edge_tick =  0;
 static const TickType_t debounce_ticks = pdMS_TO_TICKS(20);
 const uint8_t RESET_WIFI_BUTTON_PIN = 4;
 const uint16_t BUTTON_HOLD_MS = 800;
+const TickType_t delayTicks = pdMS_TO_TICKS(2000);
+const uint16_t monitorStack =4096;
 
+//taskmonitot
+TaskHandle_t monitorhandleTASK = NULL;
 
 
 void IRAM_ATTR button_isr_handler()
@@ -79,4 +83,54 @@ void IRAM_ATTR button_isr_handler()
     Serial.println("BUTTON: button handler task :: created");
   }
   
+ }
+
+
+ void monitorTASK(void*pv)
+ {
+  (void)pv;
+  for (;;)
+  {
+    vTaskDelay(delayTicks);
+    if (audiohandleTASK ==NULL || networkhandleTASK == NULL)
+    {
+      startTASK();
+    }
+    if (audiohandleTASK != NULL)
+    {
+      UBaseType_t hw = uxTaskGetStackHighWaterMark(audiohandleTASK);
+      Serial.printf("MONITOR TASK :: AUDIO TASK :: High watermark %u\n",(unsigned)hw);
+    }
+    
+  }
+  vTaskDelete(NULL);
+ }
+
+ void startmonitorTASK()
+ {
+  if (monitorhandleTASK == NULL)
+  {
+    BaseType_t ok = xTaskCreatePinnedToCore(
+      monitorTASK,
+      "monitorTASK",
+      monitorStack,
+      NULL,
+      1,
+      &monitorhandleTASK,
+      0      
+    );
+    if (ok != pdPASS)
+    {
+      Serial.println("MONITOR TASK: Creation Failed ");
+      monitorhandleTASK = NULL;
+    }
+    else
+    {
+      Serial.println("MONITOR TASK : Created");
+    }
+  }
+  else
+  {
+    Serial.println("MONITOR TASK : Already running");
+  }
  }

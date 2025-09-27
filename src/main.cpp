@@ -490,7 +490,7 @@ void networktask(void* pv)
 }
 
 
-void starttask()
+void startTASK()
 {
     const uint32_t audiostake = 8192;
     const uint32_t netstack = 4096;
@@ -554,7 +554,7 @@ void startconfigportal_button()
     delay(200);
     setup_wifi_and_params();
     clear_ring_nd_rst_indices();
-    starttask();
+    startTASK();
     Serial.println("RESET: RESET DONE");
 }
 
@@ -617,7 +617,7 @@ void setup()
     i2s_init();
     clear_ring_nd_rst_indices();
     consumer_ready.store(false);
-    starttask();
+    startTASK();
     Serial.println("SETUP : COMPLEATED :-)");
     
 }
@@ -631,7 +631,7 @@ void loop()
         if (audiohandleTASK == NULL || networkhandleTASK == NULL)
         {
             Serial.println("TASK : MISSING\nTrying to recreate......");
-            starttask();
+            startTASK();
         }
         
     }

@@ -5,3 +5,7 @@
 
 void startconfigportal_button();
 void setup_button_isr_TASK();
+void startTASK();
+
+extern TaskHandle_t audiohandleTASK;
+extern TaskHandle_t networkhandleTASK;
