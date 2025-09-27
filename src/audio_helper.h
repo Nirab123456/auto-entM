@@ -3,6 +3,7 @@
 #include "esp_timer.h"
 #include <mutex>
 #include <WiFiManager.h>
+#include "receiver_config.h"
 
 void startconfigportal_button();
 void setup_button_isr_TASK();
@@ -14,3 +15,5 @@ void printhandleTASK();
 extern TaskHandle_t audiohandleTASK;
 extern TaskHandle_t networkhandleTASK;
 extern TaskHandle_t printtaskHANDLE;
+
+extern ReciverConfig globalreciver_config; // <-- declaration only
