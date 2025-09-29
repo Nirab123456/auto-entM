@@ -1,93 +1,101 @@
 #include "receiver_config.h"
 
-ReciverConfig::ReciverConfig()
-  : ip_(0,0,0,0), port_(0)
+
+ReciverConfig :: ReciverConfig()
+    :ip_(0,0,0,0),port_(0)
 {
-  // Do not call prefs_.begin() here — call begin() from setup() when scheduler & WiFi are ready.
+    
 }
 
-ReciverConfig::~ReciverConfig() {
-  // prefs_.end() is safe to call even if never begun; keeps implementation symmetric.
-  prefs_.end();
+ReciverConfig:: ~ReciverConfig()
+{
+    prefs_.end();
 }
 
-void ReciverConfig::begin() {
-  std::lock_guard<std::mutex> lock(mu_);
-  prefs_.begin(PREF_NAMESPACE, true);
-  load();
-  prefs_.end();
+void ReciverConfig::begin()
+{
+    std::lock_guard<std::mutex>lock(mu_);
+    prefs_.begin(PREF_NAMESPACE,true);
+    load();
+    prefs_.end();
 }
 
-void ReciverConfig::load() {
-  std::lock_guard<std::mutex> lock(mu_);
-  prefs_.begin(PREF_NAMESPACE, true);
-  String saved_ip = prefs_.getString("pc_ip", "");
-  String saved_port = prefs_.getString("pc_port", "");
-  prefs_.end();
+void ReciverConfig::load()
+{
+    std:: lock_guard<std::mutex> lock(mu_);
+    prefs_.begin(PREF_NAMESPACE,true);
+    String saved_ip = prefs_.getString("pc_ip","");
+    String saved_port = prefs_.getString("pc_port","");
+    prefs_.end();
+    IPAddress tmp;
+    if (saved_ip.length()&&tmp.fromString(saved_ip))
+    {
+        ip_ = tmp;
+    }
+    else
+    {
+        ip_ = IPAddress(0,0,0,0);
+    }
 
-  IPAddress tmp;
-  if (saved_ip.length() && tmp.fromString(saved_ip)) {
-    ip_ = tmp;
-  } else {
+    if (saved_port.length())
+    {
+        long p = saved_port.toInt();
+        port_ = (p > 0 && p<= 65535) ? (uint16_t)p : 0;
+    }
+    else
+    {
+        port_ = 0;
+    } 
+}
+
+void ReciverConfig::save(const char* ip_str, uint16_t port)
+{
+    std:: lock_guard <std::mutex> lock(mu_);
+    prefs_.begin(PREF_NAMESPACE,false);
+    prefs_.putString("pc_ip",String(ip_str));
+    prefs_.putString("pc_port",String((unsigned)port));
+    prefs_.end();
+    IPAddress tmp;
+    if (ip_str && ip_str[0]&&tmp.fromString(String(ip_str)))
+    {
+        ip_ = tmp;
+        port_ = port;
+    }
+    else
+    {
+        ip_ = IPAddress(0,0,0,0);
+        port = 0;
+    }
+}
+
+void ReciverConfig::clear()
+{
+    std::lock_guard<std::mutex>lock(mu_);
+    prefs_.begin(PREF_NAMESPACE,false);
+    prefs_.remove("pc_ip");
+    prefs_.remove("pc_port");
+    prefs_.end();
     ip_ = IPAddress(0,0,0,0);
-  }
-
-  if (saved_port.length()) {
-    long p = saved_port.toInt();
-    port_ = (p > 0 && p <= 65535) ? (uint16_t)p : 0;
-  } else {
-    port_ = 0;
-  }
+    port_ =0 ;
 }
 
-void ReciverConfig::save(const char* ip_str, uint16_t port) {
-  std::lock_guard<std::mutex> lock(mu_);
-  prefs_.begin(PREF_NAMESPACE, false);
-  prefs_.putString("pc_ip", String(ip_str));
-  prefs_.putString("pc_port", String((unsigned)port));
-  prefs_.end();
-
-  IPAddress tmp;
-  if (ip_str && ip_str[0] && tmp.fromString(String(ip_str))) {
-    ip_ = tmp;
-    port_ = port;
-  } else {
-    ip_ = IPAddress(0,0,0,0);
-    port_ = 0;
-  }
+void ReciverConfig::get(IPAddress &out_ip,uint16_t & out_port)
+{
+    std::lock_guard<std::mutex>lock(mu_);
+    out_ip = ip_;
+    out_port = port_;
 }
 
-void ReciverConfig::clear() {
-  std::lock_guard<std::mutex> lock(mu_);
-  prefs_.begin(PREF_NAMESPACE, false);
-  prefs_.remove("pc_ip");
-  prefs_.remove("pc_port");
-  prefs_.end();
-  ip_ = IPAddress(0,0,0,0);
-  port_ = 0;
+String ReciverConfig::ipString()const{
+    std::lock_guard<std::mutex>lock(mu_);
+    return (ip_ == IPAddress(0,0,0,0)) ? String("(none)") : ip_.toString();
 }
 
-void ReciverConfig::get(IPAddress &out_ip, uint16_t &out_port) {
-  std::lock_guard<std::mutex> lock(mu_);
-  out_ip = ip_;
-  out_port = port_;
+unsigned short ReciverConfig::port() const{
+    std::lock_guard <std::mutex>lock(mu_);
+    return port_;
 }
-
-String ReciverConfig::ipString() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  if (ip_ == IPAddress(0,0,0,0)) return String("(none)");
-  return ip_.toString();
+bool ReciverConfig::isvalid() const{
+    std::lock_guard<std::mutex>lock(mu_);
+    return (ip_ != IPAddress(0,0,0,0)&& port_ != 0);
 }
-
-unsigned short ReciverConfig::port() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  return port_;
-}
-
-bool ReciverConfig::isvalid() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  return (ip_ != IPAddress(0,0,0,0) && port_ != 0);
-}
-
-// single global instance (definition)
-ReciverConfig globalreciver_config;
