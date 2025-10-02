@@ -331,54 +331,24 @@ void audiotask(void* pv)
     vTaskDelete(NULL);
 }
 
-void write_tcp_header(uint32_t seq, uint64_t first_sample_index,uint64_t timestamp_us, uint16_t num_frames)
-{
-    uint8_t start_track = 0;
-    uint8_t looper = 0;
-    
-    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
-    {
-        looper = start_track;
-        HEADER_BUFFER[looper +i] = ((uint8_t)((HEADER_MAGIC >> (MIN_BITS_SHIFT*i))&0xff));
-    }
-    start_track += MAIN_COPY_BYTES;
-    looper = 0;
-    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
-    {
-        looper = start_track;
-        HEADER_BUFFER[looper+i] = ((uint8_t)((seq >>(MIN_BITS_SHIFT*i))&0xff));
-    }
-    looper = 0;
-    start_track += MAIN_COPY_BYTES;
-    for (size_t i = 0; i < MAIN_COPY_BYTES*2; i++)
-    {
-        looper = start_track;
-        HEADER_BUFFER[looper + i] = ((uint8_t)((first_sample_index >> (MIN_BITS_SHIFT*i))&0xff));
-    }
-    looper = 0;
-    start_track += MAIN_COPY_BYTES*2;
-    for (size_t i = 0; i < MAIN_COPY_BYTES*2; i++)
-    {
-        looper = start_track;
-        HEADER_BUFFER[looper+i] = ((uint8_t)((timestamp_us>>(MIN_BITS_SHIFT*i))&0xff));
-    }
-    looper = 0;
-    start_track += MAIN_COPY_BYTES*2;
-    HEADER_BUFFER[start_track] = (uint8_t)(num_frames&0xff);
-    HEADER_BUFFER[++start_track] = (uint8_t)((num_frames >> MIN_BITS_SHIFT)& 0xff);
-    HEADER_BUFFER[++start_track] = (uint8_t)(NUMBERS_OF_CHANNELS);
-    HEADER_BUFFER[++start_track] = (uint8_t)(BYTES_PER_SAMPLE);
-    start_track++;
-    for (size_t i = 0; i < MAIN_COPY_BYTES; i++)
-    {
-        looper = start_track;
-        HEADER_BUFFER[looper+i] = ((uint8_t)((SAMPLE_RATE>>(MIN_BITS_SHIFT*i))&0xff));
-    }
-    looper = 0;
-    start_track += MAIN_COPY_BYTES;
-    HEADER_BUFFER[start_track] = ((uint8_t)(FORMAT_INT32_LEFT24 &0xff));
-    HEADER_BUFFER[++start_track] = ((uint8_t)((FORMAT_INT32_LEFT24>>8)&0xff));
-
+void write_tcp_header(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames) {
+  HEADER_BUFFER[0] = (uint8_t)(HEADER_MAGIC & 0xFF);
+  HEADER_BUFFER[1] = (uint8_t)((HEADER_MAGIC >> 8) & 0xFF);
+  HEADER_BUFFER[2] = (uint8_t)((HEADER_MAGIC >> 16) & 0xFF);
+  HEADER_BUFFER[3] = (uint8_t)((HEADER_MAGIC >> 24) & 0xFF);
+  for (int i=0;i<4;++i) HEADER_BUFFER[4+i] = (uint8_t)((seq >> (8*i)) & 0xFF);
+  for (int i=0;i<8;++i) HEADER_BUFFER[8+i] = (uint8_t)((first_sample_index >> (8*i)) & 0xFF);
+  for (int i=0;i<8;++i) HEADER_BUFFER[16+i] = (uint8_t)((timestamp_us >> (8*i)) & 0xFF);
+  HEADER_BUFFER[24] = (uint8_t)(number_of_frames & 0xFF);
+  HEADER_BUFFER[25] = (uint8_t)((number_of_frames >> 8) & 0xFF);
+  HEADER_BUFFER[26] = (uint8_t)NUMBERS_OF_CHANNELS;
+  HEADER_BUFFER[27] = (uint8_t)BYTES_PER_SAMPLE;
+  HEADER_BUFFER[28] = (uint8_t)(SAMPLE_RATE & 0xFF);
+  HEADER_BUFFER[29] = (uint8_t)((SAMPLE_RATE >> 8) & 0xFF);
+  HEADER_BUFFER[30] = (uint8_t)((SAMPLE_RATE >> 16) & 0xFF);
+  HEADER_BUFFER[31] = (uint8_t)((SAMPLE_RATE >> 24) & 0xFF);
+  HEADER_BUFFER[32] = (uint8_t)(FORMAT_INT32_LEFT24 & 0xFF);
+  HEADER_BUFFER[33] = (uint8_t)((FORMAT_INT32_LEFT24 >> 8) & 0xFF);
 }
 
 static bool connect_to_reciver_ip(const IPAddress &ip, uint16_t port)
