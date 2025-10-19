@@ -1,67 +1,37 @@
 //headers
-#include <Arduino.h>
-#include <WiFi.h>
-#include <WiFiManager.h>
-#include "driver/i2s.h"
-#include "esp_timer.h"
-#include <atomic>
-#include <mutex>
-#include <Preferences.h>
 #include "audio_helper.h"
 
-// configurations
-const char* WIFI_AP_NAME  = "auto-antm";
-const char* WIFI_AP_PASS = "password";
+// ---------- buffers (single definitions) ----------
+uint8_t HEADER_BUFFER[HEADER_SIZE];
 
-//audio params
-const uint8_t PIN_CLK = 7;
-const uint8_t PIN_WS = 15;
-const uint8_t PIN_SD =16;
-const uint32_t SAMPLE_RATE = 48000;
-const i2s_bits_per_sample_t I2S_BITS = I2S_BITS_PER_SAMPLE_32BIT;
-const uint8_t DEFAULT_CHANNEL_COUNT = 2;
-const uint8_t NUMBERS_OF_CHANNELS = 1;
-const uint16_t FRAMES_PER_PACKET = 1024;
-const uint8_t BYTES_PER_SAMPLE =4;
-const size_t BYTES_TO_READ = ((size_t)FRAMES_PER_PACKET*BYTES_PER_SAMPLE*2);
-const size_t PAYLOAD_BYTES = ((size_t)FRAMES_PER_PACKET*BYTES_PER_SAMPLE*NUMBERS_OF_CHANNELS);
-const size_t NEEDED_WORDS = ((size_t)FRAMES_PER_PACKET*2);
+uint32_t I2S_WORD_SLOTS[FRAMES_PER_PACKET * 2];
+uint32_t payload_words[FRAMES_PER_PACKET];
 
-constexpr int HEADER_SIZE = 34;
-const  uint32_t HEADER_MAGIC = 0x45535032;
-const uint16_t FORMAT_INT32_LEFT24 =1;
-static uint8_t HEADER_BUFFER[HEADER_SIZE];
-const uint8_t MAIN_COPY_BYTES = 4;
-const uint8_t MIN_BITS_SHIFT = 8;
+// ring buffers
+uint32_t RING_PAYLOAD[RING_SIZE][FRAMES_PER_PACKET];
+uint64_t RING_TIMESTAMP[RING_SIZE];
+uint16_t RING_FRAMES[RING_SIZE];
+uint64_t RING_FIRST_INDEX[RING_SIZE];
 
-//buffers
-static uint32_t I2S_WORD_SLOTS[FRAMES_PER_PACKET*2];
-static uint32_t payload_words[FRAMES_PER_PACKET];
-//ring buffers
-constexpr size_t RING_SIZE = 64;
-constexpr size_t RING_MASK = RING_SIZE -1;
-static uint32_t RING_PAYLOAD[RING_SIZE][FRAMES_PER_PACKET];
-static uint64_t RING_TIMESTAMP[RING_SIZE];
-static uint16_t RING_FRAMES[RING_SIZE];
-static uint64_t RING_FIRST_INDEX [RING_SIZE];
-
-
-//atomic variables
+// ---------- atomic/shared state (single definitions) ----------
 std::atomic<size_t> Ring_head{0};
 std::atomic<size_t> Ring_tail{0};
 std::atomic<uint32_t> Sequence_counter{0};
 std::atomic<uint64_t> Absolute_sample_index{0};
-std::atomic<bool>consumer_ready{false};
+std::atomic<bool> consumer_ready{false};
 
-//taskhandlers
+// ---------- task handles (single definitions) ----------
 TaskHandle_t audiohandleTASK = NULL;
 TaskHandle_t networkhandleTASK = NULL;
 TaskHandle_t printtaskHANDLE = NULL;
-const uint32_t PRINT_INTERVAL_MS =2000;
+TaskHandle_t monitorhandleTASK = NULL;
+
+SemaphoreHandle_t button_semaphore = NULL;
+volatile TickType_t isr_press_tick = 0;
+volatile TickType_t isr_last_edge_tick = 0;
 
 WiFiClient TCPCLIENT;
 
-static const char* PREF_NAMESPACE = "config";
 
 
 class ReciverConfig{

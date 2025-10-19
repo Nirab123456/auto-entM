@@ -1,24 +1,6 @@
-#include <Arduino.h>
-#include "esp_timer.h"
-#include <mutex>
-#include <Preferences.h>
 #include "audio_helper.h"
 
-//Semaphoire & ISR Globals
-static SemaphoreHandle_t button_semaphore = NULL;
-static volatile TickType_t isr_press_tick = 0;
-static volatile TickType_t isr_last_edge_tick = 0;
-static const TickType_t debounce_ticks = pdMS_TO_TICKS(20);
 
-//BUTTON PIN & TIMER
-const uint8_t RESET_WIFI_BUTTON_PIN =4;
-const uint16_t BUTTON_HOLD_MS = 800;
-const TickType_t DELAYTICKS = pdMS_TO_TICKS(2000);
-//TASK SIZE
-const uint16_t MONITOR_STACK = 4096;
-const uint16_t PRINT_STACK = 4096;
-
-static TaskHandle_t monitorhandleTASK = NULL;
 
 
 void IRAM_ATTR button_isr_handler()
