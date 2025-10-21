@@ -1,4 +1,6 @@
 //headers
+#include "audio_conf_sett.h"
+
 #include "audio_helper.h"
 #include "ReciverConfig.h"
 
