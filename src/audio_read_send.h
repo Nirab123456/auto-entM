@@ -4,6 +4,7 @@
 #include <memory>
 #include <cstddef>
 #include <cstdint>
+#include "driver/i2s.h"
 
 class AUDIO_RS {
 private:

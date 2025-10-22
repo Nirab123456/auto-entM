@@ -45,5 +45,40 @@ bool AUDIO_RS::has_consumer_ready() const
 }
 void AUDIO_RS:: Audio_Task(void*pv)
 {
+    if (!buffer_ptr_ || buffer_len_)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    bool ready = false;
+    if (Consumer_Ready_SP_)
+    {
+        ready = Consumer_Ready_SP_ -> load(std::memory_order_acquire);
+    }
+    bool pauseD = false;
+    while (true)
+    {
+        if (ready)
+        {
+            if (!pauseD)
+            {
+                Serial.println("AUDIO_TASK:: NO reciver connected");
+                i2s_zero_dma_buffer(I2S_NUM_0);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                continue;
+            }
+            else
+            {
+                if (pauseD)
+                {
+                    Serial.println("AUDIO_TASK:: Resuming");
+                    pauseD = false;
+                }
+
+            }
+        }
+        
+    }
     
+    
+
 }
