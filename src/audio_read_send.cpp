@@ -2,21 +2,48 @@
 
 AUDIO_RS::AUDIO_RS()
     :
-    consumer_ready_sp_(nullptr),
+    Consumer_Ready_SP_(nullptr),
     buffer_ptr_(nullptr),
     buffer_len_(0)
 {}
 
 AUDIO_RS::AUDIO_RS(uint32_t* buffer, size_t length)
     :
-    consumer_ready_sp_(nullptr),
+    Consumer_Ready_SP_(nullptr),
     buffer_ptr_(buffer),
     buffer_len_(length)
 {}
 
 AUDIO_RS::AUDIO_RS(std::shared_ptr<std::atomic<bool>> SP_consumer_ready)
     :
-    consumer_ready_sp_(std::move(SP_consumer_ready)),
+    Consumer_Ready_SP_(std::move(SP_consumer_ready)),
     buffer_ptr_(nullptr),
     buffer_len_(0)
 {}
+
+AUDIO_RS::AUDIO_RS(uint32_t* buffer,
+     size_t leangth,
+     std::shared_ptr<std::atomic<bool>> SP_consumer_ready
+    )
+    :
+    Consumer_Ready_SP_(std::move(SP_consumer_ready)),
+    buffer_ptr_(buffer),
+    buffer_len_(leangth)
+{}
+
+uint32_t* AUDIO_RS::buffer()    const
+{
+    return buffer_ptr_;
+}
+size_t AUDIO_RS::buffer_len()   const
+{
+    return buffer_len_;
+}
+bool AUDIO_RS::has_consumer_ready() const
+{
+    return static_cast<bool>(Consumer_Ready_SP_);
+}
+void AUDIO_RS:: Audio_Task(void*pv)
+{
+    
+}

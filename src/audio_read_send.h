@@ -8,8 +8,8 @@
 class AUDIO_RS {
 private:
     std::shared_ptr<std::atomic<bool>> Consumer_Ready_SP_;
-    uint32_t* buffer_ptr = nullptr;
-    size_t buffer_len = 0;
+    uint32_t* buffer_ptr_ = nullptr;
+    size_t buffer_len_ = 0;
     void Ring_Clear_Rst();
 
 public:
@@ -22,6 +22,6 @@ public:
     );
     uint32_t* buffer() const;
     size_t buffer_len() const;
-    bool has_consumed_memory() const;
+    bool has_consumer_ready() const;
     void Audio_Task(void* pv);
 };
