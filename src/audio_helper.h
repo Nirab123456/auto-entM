@@ -18,9 +18,7 @@ inline constexpr uint8_t PIN_WS = 15;
 inline constexpr uint8_t PIN_SD = 16;
 inline constexpr uint32_t SAMPLE_RATE = 48000;
 inline const i2s_bits_per_sample_t I2S_BITS = I2S_BITS_PER_SAMPLE_32BIT;
-inline constexpr uint8_t DEFAULT_CHANNEL_COUNT = 2;
 inline constexpr uint8_t BYTES_PER_SAMPLE = 4;
-inline constexpr size_t NEEDED_WORDS = ((size_t)FRAMES_PER_PACKET * 2);
 
 inline constexpr int HEADER_SIZE = 34;
 inline constexpr uint32_t HEADER_MAGIC = 0x45535032;
