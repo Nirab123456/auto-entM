@@ -35,7 +35,6 @@ extern uint32_t I2S_WORD_SLOTS[FRAMES_PER_PACKET * 2];
 extern uint32_t payload_words[FRAMES_PER_PACKET];
 
 // ring buffers (declare only)
-inline constexpr size_t RING_SIZE = 64;
 inline constexpr size_t RING_MASK = RING_SIZE - 1;
 extern uint32_t RING_PAYLOAD[RING_SIZE][FRAMES_PER_PACKET];
 extern uint64_t RING_TIMESTAMP[RING_SIZE];
