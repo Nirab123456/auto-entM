@@ -13,7 +13,7 @@ class AUDIO_RS
         std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
-        std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp{nullptr};
+        std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
 
         //non-owning 
         std::span<uint32_t> i2s_buffer_{};
@@ -35,7 +35,7 @@ class AUDIO_RS
             std::shared_ptr<std::atomic<uint64_t>> abs_idx = nullptr
         );
 
-        void set_consumer_ready(std::atomic<std::atomic<bool>> ar);
+        void set_consumer_ready(std::shared_ptr<std::atomic<bool>> ar);
         void set_ring_head(std::shared_ptr<std::atomic<size_t>> ar);
         void set_ring_tail(std::shared_ptr<std::atomic<size_t>> ar);
         void set_abs_idx(std::shared_ptr<std::atomic<uint64_t>> ar);
