@@ -5,6 +5,7 @@
 #include <memory>
 #include <cstdint>
 #include <cstddef>
+#include "task_prio_core_stack.h"
 
 class AUDIO_RS {
 private:
