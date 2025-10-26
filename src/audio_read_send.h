@@ -6,6 +6,7 @@
 #include <cstdint>
 #include "task_prio_core_stack.h"
 
+using TASK_TRAMPOLINE_FN = void(*)(void*);
 
 class AUDIO_RS 
 {
@@ -55,8 +56,15 @@ class AUDIO_RS
         size_t frames_per_packet() const
         {
             return frames_per_packet_;
-        }
-        static void TaskTrampoline(void* pv);
-        bool start_task(const char* name = AUDIOTASK, uint32_t stack = AUDIOTASK_STACK, UBaseType_t prio = AUDIOTASK_PRIORITY, BaseType_t core = AUDIOTASK_CORE);
+        } 
+        static void AudioTaskTrampoline(void* pv);
+        bool start_task(
+            const char* name = AUDIOTASK, 
+            uint32_t stack = AUDIOTASK_STACK, 
+            UBaseType_t prio = AUDIOTASK_PRIORITY, 
+            BaseType_t core = AUDIOTASK_CORE,
+            TASK_TRAMPOLINE_FN trampoline = AudioTaskTrampoline,
+            void* arg
+        );
 
 };

@@ -48,7 +48,7 @@ void AUDIO_RS::set_ring_payload_flat(std::span<uint32_t> flat, size_t frames_per
     frames_per_packet_ = frames_per_packet;
 }
 
-void AUDIO_RS::TaskTrampoline(void* pv)
+void AUDIO_RS::AudioTaskTrampoline(void* pv)
 {
     AUDIO_RS* self = static_cast<AUDIO_RS*>(pv);
     if (!self)
@@ -59,25 +59,105 @@ void AUDIO_RS::TaskTrampoline(void* pv)
     self ->AudioTaskLoop();
 }
 
-bool AUDIO_RS::start_task(
-    const char*     name,
-    uint32_t        stack,
-    UBaseType_t     prio,
-    BaseType_t      core
-)
+bool AUDIO_RS::start_task(const char* name,
+                          uint32_t stack,
+                          UBaseType_t prio,
+                          BaseType_t core,
+                          TASK_TRAMPOLINE_FN trampoline,
+                          void* arg)
 {
- if (core >= 0)
- {
-    BaseType_t ok = xTaskCreatePinnedToCore(
-        AUDIO_RS::TaskTrampoline,
-        name,
-        stack,
-        this,
-        prio,
-        nullptr,
-        core
-    );
-    return ok == pdPASS;
- }
+    // choose pv to pass into task
+    void* pv_arg = (arg != nullptr) ? arg : this;
+
+    BaseType_t ok;
+    if (core >= 0) {
+        ok = xTaskCreatePinnedToCore(
+            trampoline,   // use provided trampoline
+            name,
+            stack,
+            pv_arg,       // pv parameter forwarded
+            prio,
+            nullptr,
+            core
+        );
+    } else {
+        ok = xTaskCreate(
+            trampoline,
+            name,
+            stack,
+            pv_arg,
+            prio,
+            nullptr
+        );
+    }
+    return (ok == pdPASS);
+}
+
+void AUDIO_RS::AudioTaskLoop()
+{
+    if (i2s_buffer_.size()== 0 || ring_payload_flat_.size()== 0 || frames_per_packet_ == 0)
+    {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    if (ring_payload_flat_.size() % frames_per_packet_ != 0)
+    {
+        Serial.println("AUDIO_RS::AudioTaskLoop - ring payload size not divisible by frames_per_packet");
+        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelete(nullptr);
+        return;
+    }
+    const size_t ring_slots = ring_payload_flat_.size() / frames_per_packet_;
+    const size_t frames     = frames_per_packet_;
     
+    Serial.printf("TASK : AUDIOTASK started, frames=%u ring_slots=%u\n", (unsigned)frames, (unsigned)ring_slots);
+    bool paused = false;
+    for (;;)
+    {
+        if (consumer_ready_sp_)
+        {
+            if (!consumer_ready_sp_ -> load(std::memory_order_acquire))
+            {
+                if (!paused)
+                {
+                    Serial.println("AUDIO_RS::AudioTaskLoop - No receiver connected, pausing");
+                    i2s_zero_dma_buffer(I2S_NUM_0);
+                    paused = true;
+                }
+                vTaskDelay(pdMS_TO_TICKS(200));
+                continue;
+            }
+            else
+            {
+                if (paused)
+                {
+                    Serial.println("AUDIO_RS::AudioTaskLoop -> Resuming");
+                    paused = false;
+                }
+                
+            }  
+        }
+
+        size_t bytes_read = 0;
+        esp_err_t err = i2s_read(
+            I2S_NUM_0,
+            i2s_buffer_.data(),
+            i2s_buffer_.size() * sizeof(uint32_t),
+            &bytes_read,
+            portMAX_DELAY
+        );
+
+        if (err != ESP_OK || bytes_read == 0)
+        {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        size_t word_count = bytes_read /sizeof(uint32_t);
+        
+        
+    }
+        
 }
