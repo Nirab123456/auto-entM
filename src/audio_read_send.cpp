@@ -1,6 +1,7 @@
 #include "audio_read_send.h"
 #include <esp_timer.h>
 #include "driver/i2s.h"
+#include "a_c_s.h"
 
 
 AUDIO_RS::AUDIO_RS(
@@ -156,8 +157,78 @@ void AUDIO_RS::AudioTaskLoop()
         }
 
         size_t word_count = bytes_read /sizeof(uint32_t);
+        size_t available_frames = (word_count >= (frames * DEFAULT_CHANNEL_COUNT)) ? frames : (word_count / DEFAULT_CHANNEL_COUNT);
+
+        if (available_frames > frames)
+        {
+            available_frames = frames;
+        }
+
+        size_t head = ring_head_sp_ ? ring_head_sp_ -> load(std::memory_order_relaxed) : 0;
+        size_t tail = ring_tail_sp_ ? ring_tail_sp_ -> load(std::memory_order_acquire) : 0;
+        size_t next_head = head + 1;
+
+
+        if ((next_head - tail) > ring_slots)
+        {
+            if (abs_idx_sp_)
+            {
+                abs_idx_sp_ -> fetch_add(
+                    (uint64_t)available_frames,
+                    std::memory_order_relaxed
+                );
+                static unsigned drop_count = 0;
+                if ((++drop_count % 10)== 0)
+                {
+                    Serial.printf("AUDIO RING: BUFFER FULL, head-tail=%u free heap=%u\n", (unsigned)(head - tail), (unsigned)esp_get_free_heap_size());
+                }
+            }    
+            taskYIELD();
+            continue;
+        }
         
-        
+        size_t slot = head & (ring_slots -1);
+        uint32_t* row_ptr = ring_payload_flat_.data() + slot * frames;
+        std::span<uint32_t> row(row_ptr,frames);
+
+
+
+        if (available_frames == frames)
+        {
+            for (size_t i = 0; i < frames; i++)
+            {
+                row[i] = i2s_buffer_[i * DEFAULT_CHANNEL_COUNT + 1];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < available_frames; i++)
+            {
+                row[i] = i2s_buffer_[i * DEFAULT_CHANNEL_COUNT + 1];
+            }
+            
+            for (size_t i = available_frames; i < frames; i++)
+            {
+                row[i] = 0;
+            }
+        }
+
+        uint64_t first_sample_idx =  abs_idx_sp_ ? abs_idx_sp_ ->load(std::memory_order_relaxed) : 0;
+        uint64_t ts               = (uint64_t)esp_timer_get_time();
+
+        if (ring_head_sp_)
+        {
+            ring_head_sp_ ->store(next_head, std::memory_order_release);
+    
+        }
+        if(abs_idx_sp_)
+        {
+            abs_idx_sp_ ->fetch_add(
+                (uint64_t)available_frames,
+                std::memory_order_relaxed
+            );
+        }    
+        taskYIELD();
     }
         
 }
