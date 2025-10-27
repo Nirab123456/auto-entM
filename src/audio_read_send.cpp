@@ -232,3 +232,37 @@ void AUDIO_RS::AudioTaskLoop()
     }
         
 }
+
+void AUDIO_RS::I2SReaderLoop()
+{
+    if (i2s_buffer_.size() == 0 || i2s_queue_ == nullptr) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    for (;;) {
+        size_t bytes_read = 0;
+        esp_err_t err = i2s_read(
+            I2S_NUM_0,
+            i2s_buffer_.data(),
+            i2s_buffer_.size() * sizeof(uint32_t),
+            &bytes_read,
+            portMAX_DELAY
+        );
+
+        if (err != ESP_OK || bytes_read == 0) {
+            // small sleep and retry
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+
+        // push to queue (if full, drop oldest by overwriting: try send with timeout 0)
+        if (xQueueSend(i2s_queue_, &bytes_read, 0) != pdTRUE) {
+            // queue full -> try overwrite by receiving one and sending again (simple discard policy)
+            size_t dummy;
+            xQueueReceive(i2s_queue_, &dummy, 0);
+            xQueueSend(i2s_queue_, &bytes_read, 0);
+        }
+    }
+}

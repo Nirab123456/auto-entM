@@ -1,7 +1,7 @@
 #include "audio_read_send.h"
 #include <esp_timer.h>
 #include "driver/i2s.h"
-#include "audio_conf_sett.h"
+#include "a_c_s.h"
 
 // NOTE: requires your audio_conf_sett.h for constants
 // #include "audio_conf_sett.h"

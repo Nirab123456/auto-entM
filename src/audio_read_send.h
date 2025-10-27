@@ -21,6 +21,21 @@ class AUDIO_RS
         std::span<uint32_t> ring_payload_flat_{};
         size_t frames_per_packet_{0};
 
+
+        //rtos premetives
+        QueueHandle_t       i2s_queue_{nullptr};
+        TaskHandle_t        read_task_{nullptr};
+        TaskHandle_t        write_task_{nullptr};
+        TaskHandle_t        fingerprint_task_{nullptr};
+        TaskHandle_t        networktask_{nullptr};
+
+        void I2SReaderLoop();
+        void RingWriterLoop();
+        void FingerPrintLoop();
+        void NetworkTaskLoop();
+        
+
+
         void Ring_clear_Rst();
         void AudioTaskLoop();
     public:
@@ -58,6 +73,9 @@ class AUDIO_RS
             return frames_per_packet_;
         } 
         static void AudioTaskTrampoline(void* pv);
+        static void I2SReadTrampoline(void* pv);
+        static void RingWriterFRMI2STrampoline(void* pv);
+        static void NetworkTaskTrampoline(void* pv);
         bool start_task(
             const char* name = AUDIOTASK, 
             uint32_t stack = AUDIOTASK_STACK, 
