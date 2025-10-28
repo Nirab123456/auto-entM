@@ -15,6 +15,17 @@ class AUDIO_RS
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
         std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
+        
+
+        enum class OverRunPolicy : uint8_t {
+            DROP_NEWEST = 0,
+            DROP_OLDEST = 1
+        };
+
+        OverRunPolicy  overrun_policy_ = OverRunPolicy::DROP_NEWEST;
+
+        std::atomic<uint32_t> drop_count_newest_{0};
+        std::atomic<uint32_t> drop_count_oldest_{0};
 
         //non-owning 
         std::span<uint32_t> i2s_buffer_{};
@@ -84,5 +95,18 @@ class AUDIO_RS
             TASK_TRAMPOLINE_FN trampoline = AudioTaskTrampoline,
             void* arg
         );
+
+        
+
+        // set policy directly
+        void set_overrun_policy(OverRunPolicy p) { overrun_policy_ = p; }
+
+        // convenience methods (you asked for these names)
+        void ovverrunpolicy_newest() { set_overrun_policy(OverRunPolicy::DROP_NEWEST); }
+        void ovverrunpolicy_oldest() { set_overrun_policy(OverRunPolicy::DROP_OLDEST); }
+
+        // read-only stats
+        uint32_t get_drop_count_newest() const { return drop_count_newest_.load(std::memory_order_relaxed); }
+        uint32_t get_drop_count_oldest() const { return drop_count_oldest_.load(std::memory_order_relaxed); }
 
 };
