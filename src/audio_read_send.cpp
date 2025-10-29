@@ -395,3 +395,47 @@ void AUDIO_RS::RingWriterLoop()
     }
     
 }
+
+void AUDIO_RS::Ring_clear_Rst()
+{
+    // If nothing is configured, nothing to do.
+    if (ring_payload_flat_.size() == 0 && i2s_buffer_.size() == 0
+        && !ring_head_sp_ && !ring_tail_sp_ && !abs_idx_sp_) {
+        return;
+    }
+
+    // Suspend the scheduler to avoid concurrent readers/writers while we clear.
+    // This is simple and effective on ESP32; it's brief so it's usually safe.
+    vTaskSuspendAll();
+
+    // 1) Zero the ring payload flat buffer (if present)
+    if (ring_payload_flat_.size() > 0) {
+        std::fill(ring_payload_flat_.begin(), ring_payload_flat_.end(), 0u);
+    }
+
+    // 2) Zero the temporary I2S buffer (optional, keeps a clean state)
+    if (i2s_buffer_.size() > 0) {
+        std::fill(i2s_buffer_.begin(), i2s_buffer_.end(), 0u);
+    }
+
+    // 3) Reset atomics (tail first is safest for consumers: make ring empty)
+    //    We use relaxed ordering for initial reset; consumers/producers should
+    //    use acquire/release when observing normal operation.
+    if (ring_tail_sp_) ring_tail_sp_->store(0, std::memory_order_relaxed);
+    if (ring_head_sp_) ring_head_sp_->store(0, std::memory_order_relaxed);
+    if (abs_idx_sp_)   abs_idx_sp_->store(0, std::memory_order_relaxed);
+
+    // 4) Reset overrun/drop counters (if you have them)
+    drop_count_newest_.store(0u, std::memory_order_relaxed);
+    drop_count_oldest_.store(0u, std::memory_order_relaxed);
+
+    // 5) If you maintain separate metadata arrays (RING_FRAMES, RING_FIRST_INDEX, RING_TIMESTAMP),
+    //    clear them here. They are often globals; uncomment and adapt if they exist:
+    //
+    for (size_t s = 0; s < ring_payload_flat_.size() / frames_per_packet_; ++s) {
+        continue;
+    }
+
+    // Resume scheduler
+    xTaskResumeAll();
+}
