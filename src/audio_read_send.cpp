@@ -2,6 +2,7 @@
 #include <esp_timer.h>
 #include "driver/i2s.h"
 #include "a_c_s.h"
+#include "ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
 
 AUDIO_RS::AUDIO_RS(
@@ -327,10 +328,12 @@ void AUDIO_RS::NetworkTaskLoop()
         uint16_t remote_port = 0;
         bool have_cfg = false;
         if (recfg_ptr_) {
-            have_cfg = recfg_ptr_->get(remote_ip, remote_port), (void)0, true; 
-            // Note: recfg.get() returns void — we check validity separately below
-            // so instead call isvalid() and then get()
-            // (fixing above)
+            // first check if config is valid
+            have_cfg = recfg_ptr_->isvalid();
+            if (have_cfg) {
+                // then copy the IP/port into our out params
+                recfg_ptr_->get(remote_ip, remote_port);
+            }
         }
         // better: check valid and then get
         if (recfg_ptr_ && recfg_ptr_->isvalid()) {
@@ -411,7 +414,7 @@ void AUDIO_RS::NetworkTaskLoop()
             write_tcp_header_fn_(seq, first_index, ts, (uint16_t)frames);
         } else {
             // implement member write_tcp_header(seq, first_index, ts, frames)
-            write_tcp_header(seq, first_index, ts, (uint16_t)frames);
+            WriteTCPHeader(seq, first_index, ts, (uint16_t)frames);
         }
 
         // send header via tcp_write_fn_ or tcp_client_ptr_

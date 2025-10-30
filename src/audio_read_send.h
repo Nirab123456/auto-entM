@@ -4,50 +4,91 @@
 #include <atomic>
 #include <memory>
 #include <cstdint>
+#include <functional>
+#include <vector>
+#include <WiFi.h>            // for WiFiClient and WiFi.isConnected()
 #include "task_prio_core_stack.h"
 
 using TASK_TRAMPOLINE_FN = void(*)(void*);
 
+// forward declare your ReciverConfig (you provided this elsewhere)
+class ReciverConfig;
+
 class AUDIO_RS 
 {
-    private:
-        std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
-        std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
-        std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
-        std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
-        
-
+    public:
         enum class OverRunPolicy : uint8_t {
             DROP_NEWEST = 0,
             DROP_OLDEST = 1
         };
 
-        OverRunPolicy  overrun_policy_ = OverRunPolicy::DROP_NEWEST;
+    private:
+        // -----------------------
+        // core shared atomics
+        // -----------------------
+        std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
+        std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
+        std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
+        std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
+        std::shared_ptr<std::atomic<uint32_t>>      sequence_counter_{nullptr};
 
+        // overrun policy & stats
+        OverRunPolicy  overrun_policy_ = OverRunPolicy::DROP_NEWEST;
         std::atomic<uint32_t> drop_count_newest_{0};
         std::atomic<uint32_t> drop_count_oldest_{0};
 
-        //non-owning 
+        // -----------------------
+        // non-owning buffers (spans)
+        // ring_payload_flat_ is a flat view of RING_SIZE * frames_per_packet_
+        // -----------------------
         std::span<uint32_t> i2s_buffer_{};
         std::span<uint32_t> ring_payload_flat_{};
         size_t frames_per_packet_{0};
 
+        // per-slot metadata (non-owning spans pointing at arrays you must provide)
+        std::span<uint16_t> ring_frames_span_{};        // length == ring_slots
+        std::span<uint64_t> ring_first_index_span_{};
+        std::span<uint64_t> ring_timestamp_span_{};
 
-        //rtos premetives
+        // -----------------------
+        // RTOS / task primitives
+        // -----------------------
         QueueHandle_t       i2s_queue_{nullptr};
         TaskHandle_t        read_task_{nullptr};
         TaskHandle_t        write_task_{nullptr};
         TaskHandle_t        fingerprint_task_{nullptr};
         TaskHandle_t        networktask_{nullptr};
 
+        // -----------------------
+        // Networking / ReciverConfig integration (dependency injection)
+        // -----------------------
+        ReciverConfig*                              recfg_ptr_{nullptr}; // optional
+        std::function<bool(IPAddress&, uint16_t&)>  recfg_getter_{nullptr}; // optional getter
+
+        // TCP client or callbacks (choose either approach or supply both)
+        WiFiClient*                                  tcp_client_ptr_{nullptr}; // optional
+        std::function<bool(IPAddress, uint16_t)>    tcp_connect_fn_{nullptr}; // return true on success
+        std::function<int(const uint8_t*, size_t)>  tcp_write_fn_{nullptr};   // return bytes written
+        std::function<void()>                       tcp_client_stop_fn_{nullptr};
+        std::function<bool()>                       tcp_client_connected_fn_{nullptr}; // returns true if connected
+
+        // header buffer and writer callback
+        std::vector<uint8_t>                        header_buffer_;
+        size_t                                       header_size_{0};
+        std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> write_tcp_header_fn_{nullptr};
+
+        // ring clear / reset callback (optional)
+        std::function<void()>                        clear_ring_and_reset_indices_fn_{nullptr};
+
+        // -----------------------
+        // Internal task loops (instance methods)
+        // -----------------------
         void I2SReaderLoop();
         void RingWriterLoop();
         void FingerPrintLoop();
         void NetworkTaskLoop();
-        
-
-
         void AudioTaskLoop();
+
     public:
         AUDIO_RS() = default;
 
@@ -60,48 +101,69 @@ class AUDIO_RS
             std::shared_ptr<std::atomic<size_t>> ring_tail = nullptr,
             std::shared_ptr<std::atomic<uint64_t>> abs_idx = nullptr
         );
+        
+        void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
         void Ring_clear_Rst();
 
+        // -----------------------
+        // basic setters for atomics & buffers
+        // -----------------------
         void set_consumer_ready(std::shared_ptr<std::atomic<bool>> ar);
         void set_ring_head(std::shared_ptr<std::atomic<size_t>> ar);
         void set_ring_tail(std::shared_ptr<std::atomic<size_t>> ar);
         void set_abs_idx(std::shared_ptr<std::atomic<uint64_t>> ar);
-        
+        void set_sequence_counter(std::shared_ptr<std::atomic<uint32_t>> seq);
+
         void set_i2s_buffer(std::span<uint32_t> i2s_buffer);
-        void set_ring_payload_flat(std::span<uint32_t>flat, size_t frames_per_packet);
+        void set_ring_payload_flat(std::span<uint32_t> flat, size_t frames_per_packet);
 
+        // metadata spans (non-owning)
+        void set_ring_metadata_spans(std::span<uint16_t> frames_span,
+                                     std::span<uint64_t> first_index_span,
+                                     std::span<uint64_t> timestamp_span);
 
-        std::span<uint32_t> i2s_buffer() const
-        {
-            return i2s_buffer_;
-        }
-        std::span<uint32_t> ring_payload_flat() const
-        {
-            return ring_payload_flat_;
-        }
-        size_t frames_per_packet() const
-        {
-            return frames_per_packet_;
-        } 
+        // -----------------------
+        // networking setters (dependency injection)
+        // -----------------------
+        // Prefer passing either ReciverConfig* or a getter lambda. If both provided,
+        // recfg_getter_ will be used first.
+        void set_reciver_config_ptr(ReciverConfig* ptr);
+        void set_reciver_config_getter(std::function<bool(IPAddress&, uint16_t&)> getter);
+
+        // TCP client pointer (WiFiClient), or alternatively set the connect/write callbacks
+        void set_tcp_client_ptr(WiFiClient* client);
+        void set_tcp_connect_fn(std::function<bool(IPAddress, uint16_t)> connect_fn);
+        void set_tcp_write_fn(std::function<int(const uint8_t*, size_t)> write_fn);
+        void set_tcp_client_stop_fn(std::function<void()> stop_fn);
+        void set_tcp_client_connected_fn(std::function<bool()> connected_fn);
+
+        // header buffer and header writer callback
+        void set_header_buffer_size(size_t n);
+        void set_write_tcp_header_fn(std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> fn);
+
+        // clear/reset callback
+        void set_clear_ring_and_reset_indices_fn(std::function<void()> fn);
+
+        // -----------------------
+        // task/trampoline helpers
+        // -----------------------
         static void AudioTaskTrampoline(void* pv);
         static void I2SReadTrampoline(void* pv);
         static void RingWriterFRMI2STrampoline(void* pv);
         static void NetworkTaskTrampoline(void* pv);
+
+        // start modular tasks (you already have similar; kept signature)
         bool start_task(
             const char* name = AUDIOTASK, 
             uint32_t stack = AUDIOTASK_STACK, 
             UBaseType_t prio = AUDIOTASK_PRIORITY, 
             BaseType_t core = AUDIOTASK_CORE,
             TASK_TRAMPOLINE_FN trampoline = AudioTaskTrampoline,
-            void* arg
+            void* arg = nullptr
         );
 
-        
-
-        // set policy directly
+        // convenience overrun setters
         void set_overrun_policy(OverRunPolicy p) { overrun_policy_ = p; }
-
-        // convenience methods (you asked for these names)
         void ovverrunpolicy_newest() { set_overrun_policy(OverRunPolicy::DROP_NEWEST); }
         void ovverrunpolicy_oldest() { set_overrun_policy(OverRunPolicy::DROP_OLDEST); }
 
@@ -109,4 +171,8 @@ class AUDIO_RS
         uint32_t get_drop_count_newest() const { return drop_count_newest_.load(std::memory_order_relaxed); }
         uint32_t get_drop_count_oldest() const { return drop_count_oldest_.load(std::memory_order_relaxed); }
 
+        // expose some spans for read-only inspection if needed
+        std::span<uint32_t> i2s_buffer() const { return i2s_buffer_; }
+        std::span<uint32_t> ring_payload_flat() const { return ring_payload_flat_; }
+        size_t frames_per_packet() const { return frames_per_packet_; }
 };
