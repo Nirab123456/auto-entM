@@ -9,3 +9,4 @@ inline constexpr uint16_t FRAMES_PER_PACKET = 1024;
 // inline constexpr size_t NEEDED_WORDS = ((size_t)FRAMES_PER_PACKET*2);
 inline constexpr uint8_t DEFAULT_CHANNEL_COUNT = 2;
 inline constexpr size_t RING_SIZE = 64;
+inline constexpr char* PREF_NAMESPACE = "config";
