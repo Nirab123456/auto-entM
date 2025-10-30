@@ -47,7 +47,6 @@ class AUDIO_RS
         
 
 
-        void Ring_clear_Rst();
         void AudioTaskLoop();
     public:
         AUDIO_RS() = default;
@@ -61,6 +60,7 @@ class AUDIO_RS
             std::shared_ptr<std::atomic<size_t>> ring_tail = nullptr,
             std::shared_ptr<std::atomic<uint64_t>> abs_idx = nullptr
         );
+        void Ring_clear_Rst();
 
         void set_consumer_ready(std::shared_ptr<std::atomic<bool>> ar);
         void set_ring_head(std::shared_ptr<std::atomic<size_t>> ar);
