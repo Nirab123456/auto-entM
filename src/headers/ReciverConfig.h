@@ -2,13 +2,9 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <mutex>
-#include "audio_read_send.h"
+#include "a_c_s.h"
 
-// Use the same PREF_NAMESPACE string you use elsewhere.
-// If you already define PREF_NAMESPACE elsewhere, this #ifndef won't override it.
-#ifndef PREF_NAMESPACE
- #define PREF_NAMESPACE "config"
-#endif
+
 
 class ReciverConfig {
     private:
@@ -26,6 +22,6 @@ class ReciverConfig {
         String ipString();
         unsigned short port();
         bool isValid();
-
+        void begin();
 
 };
