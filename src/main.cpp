@@ -3,8 +3,8 @@
 #include <memory>
 #include <atomic>
 #include <span>
-#include "audio_read_send.h"   // your header
-#include "a_c_s.h"   // defines FRAMES_PER_PACKET, RING_SIZE, BYTES_PER_SAMPLE, etc.
+#include "headers/audio_read_send.h"   // your header
+#include "headers/a_c_s.h"   // defines FRAMES_PER_PACKET, RING_SIZE, BYTES_PER_SAMPLE, etc.
 
 //
 // Globals backing the spans (must outlive tasks). Keep them static or file-scope.

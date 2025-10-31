@@ -1,8 +1,8 @@
-#include "audio_read_send.h"
+#include "headers/audio_read_send.h"
 #include <esp_timer.h>
 #include "driver/i2s.h"
-#include "a_c_s.h"
-#include "ReciverConfig.h"   // <<--- add this (exact filename may differ)
+#include "headers/a_c_s.h"
+#include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
 
 AUDIO_RS::AUDIO_RS(
@@ -329,14 +329,14 @@ void AUDIO_RS::NetworkTaskLoop()
         bool have_cfg = false;
         if (recfg_ptr_) {
             // first check if config is valid
-            have_cfg = recfg_ptr_->isvalid();
+            have_cfg = recfg_ptr_->isValid();
             if (have_cfg) {
                 // then copy the IP/port into our out params
                 recfg_ptr_->get(remote_ip, remote_port);
             }
         }
         // better: check valid and then get
-        if (recfg_ptr_ && recfg_ptr_->isvalid()) {
+        if (recfg_ptr_ && recfg_ptr_->isValid()) {
             recfg_ptr_->get(remote_ip, remote_port);
             have_cfg = true;
         } else {
