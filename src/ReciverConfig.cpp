@@ -98,12 +98,12 @@ bool ReciverConfig::isValid()
     return (ip_ != IPAddress(0,0,0,0) && port_ != 0);
 }
 
-//has to be rewritten
-bool ReciverConfig::ConnectTOReciverIP(WiFiClient* tcpClient)
+bool ReciverConfig::ConnectTOReciverIP(WiFiClient* WiFi_TCPClient)
 {
-    if (tcpClient == nullptr) return false;
-
-    // copy ip/port under lock, then release lock before blocking connect()
+    if (WiFi_TCPClient == nullptr)
+    {
+        return false;
+    }
     IPAddress ip_copy;
     uint16_t port_copy;
     {
@@ -111,35 +111,42 @@ bool ReciverConfig::ConnectTOReciverIP(WiFiClient* tcpClient)
         ip_copy = ip_;
         port_copy = port_;
     }
-
-    if (ip_copy == IPAddress(0,0,0,0) || port_copy == 0) {
-        return false;
-    }
-
-    // ensure previous connection closed
-    tcpClient->stop();
-    delay(10); // small gap to allow socket close - keep short
-
-    // try connect
-    bool con_ok = false;
-    // Client::connect returns int for some implementations; treat non-zero as success
-    con_ok = (tcpClient->connect(ip_copy, port_copy) ? true : false);
-
-    if (!con_ok || !tcpClient->connected())
+    if (ip_copy == IPAddress(0,0,0,0) || port == 0)
     {
-        tcpClient->stop();
-        Serial.println("RECIVER: CONNECTION failed");
         return false;
     }
+    WiFi_TCPClient->stop();
+    delay(10);
 
-    // disable Nagle if supported
-    tcpClient->setNoDelay(true);
+    bool connection_ok = false;
+    if (WiFi_TCPClient->connect(ip_copy, port_copy))
+    {
+        connection_ok = true;
+    }
+    if (!connection_ok || !WiFi_TCPClient->connected())
+    {
+        WiFi_TCPClient->stop();
+        Serial.println("ReciverConfig::ConnectTOReciverIP::Connection failed");
+        return false;
+    }
+    bool still_same = false;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        still_same = (ip_ == ip_copy && port_ == port_copy);
+    }
+    if (!still_same)
+    {
+        WiFi_TCPClient->stop();
+        Serial.println("ReciverConfig::ConnectTOReciverIP::Reciver configuration changed ip or port::Closing");
+        return false;
+    }
+    
+    WiFi_TCPClient->setNoDelay(true);
 
-    Serial.print("RECIVER: connected to ip: ");
+    Serial.print("ReciverConfig::ConnectTOReciverIP::Reciver IP: ");
     Serial.print(ip_copy.toString());
     Serial.print(":");
     Serial.println(port_copy);
 
-    return true;
+    return true; 
 }
-

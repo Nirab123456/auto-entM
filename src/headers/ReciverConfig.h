@@ -25,6 +25,6 @@ class ReciverConfig {
         unsigned short port();
         bool isValid();
         void begin();
-        bool ConnectTOReciverIP(WiFiClient* tcpClient);
+        bool ConnectTOReciverIP(WiFiClient* WiFi_TCPClient);
 
 };
