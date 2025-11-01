@@ -345,7 +345,7 @@ void AUDIO_RS::NetworkTaskLoop()
             have_cfg = false;
         }
 
-        bool connected = tcp_client_ptr_ ? tcp_client_ptr_ -> connected() : false;
+        bool connected = WiFi_tcp_client_ptr_ ? WiFi_tcp_client_ptr_ -> connected() : false;
         unsigned long now = millis();
         if (!connected)
         {
@@ -360,15 +360,20 @@ void AUDIO_RS::NetworkTaskLoop()
                     }
                     Ring_clear_Rst();
                     bool ok = false;
+
                     if (tcp_connect_fn_)
                     {
                         ok = tcp_connect_fn_(remote_ip,remote_port);
                     }
-                    else if (tcp_client_ptr_)
+                    else if (WiFi_tcp_client_ptr_)
                     {
-                        tcp_client_ptr_->stop();
-                        ok = tcp_client_ptr_->connect(remote_ip, remote_port);
+                        if (have_cfg)
+                        {
+                            ok = recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_);
+                        }
+
                     }
+
                     if (ok)
                     {
                         if (consumer_ready_sp_)
@@ -437,9 +442,9 @@ void AUDIO_RS::NetworkTaskLoop()
             {
                 written = tcp_write_fn_(header_buffer_.data() + hsent, header_size_ - hsent);
             }
-            else if (tcp_client_ptr_)
+            else if (WiFi_tcp_client_ptr_)
             {
-                written = tcp_client_ptr_->write(header_buffer_.data() + hsent, header_size_ - hsent);
+                written = WiFi_tcp_client_ptr_->write(header_buffer_.data() + hsent, header_size_ - hsent);
             }
             else
             {

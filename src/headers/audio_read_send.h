@@ -66,7 +66,7 @@ class AUDIO_RS
         std::function<bool(IPAddress&, uint16_t&)>  recfg_getter_{nullptr}; // optional getter
 
         // TCP client or callbacks (choose either approach or supply both)
-        WiFiClient*                                  tcp_client_ptr_{nullptr}; // optional
+        WiFiClient*                                  WiFi_tcp_client_ptr_{nullptr}; // optional
         std::function<bool(IPAddress, uint16_t)>    tcp_connect_fn_{nullptr}; // return true on success
         std::function<int(const uint8_t*, size_t)>  tcp_write_fn_{nullptr};   // return bytes written
         std::function<void()>                       tcp_client_stop_fn_{nullptr};
