@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <mutex>
 #include "a_c_s.h"
+#include <WiFi.h>
 
 inline constexpr uint16_t CONNECTION_RETRY_INTERVAL_MS = 200;
 
@@ -24,5 +25,6 @@ class ReciverConfig {
         unsigned short port();
         bool isValid();
         void begin();
+        bool ConnectTOReciverIP(WiFiClient* tcpClient);
 
 };

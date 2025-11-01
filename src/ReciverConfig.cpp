@@ -1,4 +1,6 @@
 #include "headers/ReciverConfig.h"
+#include <Client.h> // base class for WiFiClient
+
 
 ReciverConfig::ReciverConfig()
 {}
@@ -95,3 +97,49 @@ bool ReciverConfig::isValid()
     std::lock_guard<std::mutex> lock(mu_);
     return (ip_ != IPAddress(0,0,0,0) && port_ != 0);
 }
+
+//has to be rewritten
+bool ReciverConfig::ConnectTOReciverIP(WiFiClient* tcpClient)
+{
+    if (tcpClient == nullptr) return false;
+
+    // copy ip/port under lock, then release lock before blocking connect()
+    IPAddress ip_copy;
+    uint16_t port_copy;
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        ip_copy = ip_;
+        port_copy = port_;
+    }
+
+    if (ip_copy == IPAddress(0,0,0,0) || port_copy == 0) {
+        return false;
+    }
+
+    // ensure previous connection closed
+    tcpClient->stop();
+    delay(10); // small gap to allow socket close - keep short
+
+    // try connect
+    bool con_ok = false;
+    // Client::connect returns int for some implementations; treat non-zero as success
+    con_ok = (tcpClient->connect(ip_copy, port_copy) ? true : false);
+
+    if (!con_ok || !tcpClient->connected())
+    {
+        tcpClient->stop();
+        Serial.println("RECIVER: CONNECTION failed");
+        return false;
+    }
+
+    // disable Nagle if supported
+    tcpClient->setNoDelay(true);
+
+    Serial.print("RECIVER: connected to ip: ");
+    Serial.print(ip_copy.toString());
+    Serial.print(":");
+    Serial.println(port_copy);
+
+    return true;
+}
+
