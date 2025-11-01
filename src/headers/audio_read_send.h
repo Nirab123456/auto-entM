@@ -78,7 +78,7 @@ class AUDIO_RS
         std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> write_tcp_header_fn_{nullptr};
 
         // ring clear / reset callback (optional)
-        std::function<void()>                        clear_ring_and_reset_indices_fn_{nullptr};
+        // std::function<void()>                        clear_ring_and_reset_indices_fn_{nullptr};
 
         // -----------------------
         // Internal task loops (instance methods)

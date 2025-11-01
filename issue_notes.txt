@@ -1,0 +1,1 @@
+Summary: vTaskSuspendAll() works, but it’s blunt; prefer coordinated pausing via atomics or mutexes for cleaner, safer concurrency.

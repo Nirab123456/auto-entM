@@ -303,156 +303,180 @@ void AUDIO_RS::Ring_clear_Rst()
 }
 void AUDIO_RS::NetworkTaskLoop()
 {
-    // Pre-check: ring buffer and frames must be configured
-    if (ring_payload_flat_.size() == 0 || frames_per_packet_ == 0) {
+    if (ring_payload_flat_.size() == 0 || frames_per_packet == 0)
+    {
         Serial.println("NetworkLoop: ring or frames not configured");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
     }
 
-    // ring slots
-    const size_t ring_slots = ring_payload_flat_.size() / frames_per_packet_;
-    if (ring_slots == 0) {
-        Serial.println("NetworkLoop: invalid ring_slots");
+    const size_t ring_slots = ring_payload_flat_.size() /frames_per_packet_;
+    if (ring_slots == 0)
+    {
+        Serial.println("NetworkTaskLoop : invalid ring_slots");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
     }
-
+    
     unsigned long last_conn_attempt = 0;
 
-    for (;;) {
-        // 1) get remote config from ReciverConfig instance
+    for (;;)
+    {
         IPAddress remote_ip;
         uint16_t remote_port = 0;
         bool have_cfg = false;
-        if (recfg_ptr_) {
-            // first check if config is valid
-            have_cfg = recfg_ptr_->isValid();
-            if (have_cfg) {
-                // then copy the IP/port into our out params
-                recfg_ptr_->get(remote_ip, remote_port);
+        if (recfg_ptr_)
+        {
+            have_cfg = recfg_ptr_ ->isValid();
+            if (have_cfg)
+            {
+                recfg_ptr_->get(remote_ip,remote_port);
             }
         }
-        // better: check valid and then get
-        if (recfg_ptr_ && recfg_ptr_->isValid()) {
+        if (recfg_ptr_ && recfg_ptr_->isValid())
+        {
             recfg_ptr_->get(remote_ip, remote_port);
             have_cfg = true;
-        } else {
+        }
+        else
+        {
             have_cfg = false;
         }
 
-        // 2) Connect if not connected
-        bool connected = tcp_client_ptr_ ? tcp_client_ptr_->connected() : false;
+        bool connected = tcp_client_ptr_ ? tcp_client_ptr_ -> connected() : false;
         unsigned long now = millis();
-        if (!connected) {
-            if (have_cfg && (WiFi.isConnected())) {
-                if ((now - last_conn_attempt) >= 200) {
+        if (!connected)
+        {
+            if (have_cfg && (WiFi.isConnected()))
+            {
+                if ((now - last_conn_attempt) >= CONNECTION_RETRY_INTERVAL_MS)
+                {
                     last_conn_attempt = now;
-
-                    // temporarily mark consumer not ready while connecting
-                    if (consumer_ready_sp_) consumer_ready_sp_->store(false, std::memory_order_release);
-
-                    // optionally clear ring and reset indices via callback (if provided)
-                    if (clear_ring_and_reset_indices_fn_) clear_ring_and_reset_indices_fn_();
-
-                    // try to connect using tcp_client_ptr_ (WiFiClient)
+                    if (consumer_ready_sp_)
+                    {
+                        consumer_ready_sp_->store(false, std::memory_order_release);
+                    }
+                    Ring_clear_Rst();
                     bool ok = false;
-                    if (tcp_connect_fn_) {
-                        ok = tcp_connect_fn_(remote_ip, remote_port);
-                    } else if (tcp_client_ptr_) {
+                    if (tcp_connect_fn_)
+                    {
+                        ok = tcp_connect_fn_(remote_ip,remote_port);
+                    }
+                    else if (tcp_client_ptr_)
+                    {
                         tcp_client_ptr_->stop();
                         ok = tcp_client_ptr_->connect(remote_ip, remote_port);
                     }
-
-                    if (ok) {
-                        if (consumer_ready_sp_) consumer_ready_sp_->store(true, std::memory_order_release);
-                    } else {
-                        if (consumer_ready_sp_) consumer_ready_sp_->store(false, std::memory_order_release);
-                        vTaskDelay(pdMS_TO_TICKS(20));
-                        continue;
-                    }
-                }
+                    if (ok)
+                    {
+                        if (consumer_ready_sp_)
+                        {
+                            consumer_ready_sp_->store(true,std::memory_order_release);
+                        }
+                        else
+                        {
+                            if (consumer_ready_sp_)
+                            {
+                                consumer_ready_sp_->store(false,std::memory_order_release);
+                            }
+                            vTaskDelay(pdMS_TO_TICKS(20));
+                            continue;
+                        }
+                    }          
+                }      
             }
         }
 
-        // 3) check if there's data to send (tail != head)
         size_t tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
         size_t head = ring_head_sp_ ? ring_head_sp_->load(std::memory_order_acquire) : 0;
-        if (tail == head) {
-            // nothing to send
+        if (tail ==head)
+        {
             vTaskDelay(pdMS_TO_TICKS(2));
             continue;
         }
-
-        // 4) compute slot and check frames metadata spans (must be configured)
-        size_t slot = tail & (ring_slots - 1); // requires power-of-two ring_slots; else use modulo
+        size_t slot = tail & (ring_slots -1);
         uint16_t frames = 0;
-        if (ring_frames_span_.size() == ring_slots) {
+        if (ring_frames_span_.size() == ring_slots)
+        {
             frames = ring_frames_span_[slot];
-        } else {
-            // metadata not configured
+        }
+        else
+        {
             Serial.println("NetworkLoop: ring_frames_span_ not configured");
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
-        if (frames == 0 || frames > (uint16_t)frames_per_packet_) {
-            // skip invalid slot
-            if (ring_tail_sp_) ring_tail_sp_->store(tail + 1, std::memory_order_release);
+        if (frames == 0 || frames > (uint16_t)frames_per_packet_)
+        {
+            if (ring_tail_sp_)
+            {
+                ring_tail_sp_->store(tail+1, std::memory_order_release);
+            }
             continue;
         }
-
-        // 5) prepare header and send
+        
         uint32_t seq = sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0;
         uint64_t first_index = ring_first_index_span_.size() == ring_slots ? ring_first_index_span_[slot] : 0;
         uint64_t ts = ring_timestamp_span_.size() == ring_slots ? ring_timestamp_span_[slot] : 0;
 
-        // write header into header_buffer_ via callback or member method
         if (write_tcp_header_fn_) {
             write_tcp_header_fn_(seq, first_index, ts, (uint16_t)frames);
         } else {
             // implement member write_tcp_header(seq, first_index, ts, frames)
-            WriteTCPHeader(seq, first_index, ts, (uint16_t)frames);
+            WriteTCPHeader(seq, first_index, ts, (uint16_t)frames); // default writter
         }
-
-        // send header via tcp_write_fn_ or tcp_client_ptr_
         size_t hsent = 0;
         bool ok = true;
-        while (hsent < header_size_) {
+        while (hsent < header_size_)
+        {
             int written = 0;
-            if (tcp_write_fn_) {
+            if (tcp_write_fn_)
+            {
                 written = tcp_write_fn_(header_buffer_.data() + hsent, header_size_ - hsent);
-            } else if (tcp_client_ptr_) {
+            }
+            else if (tcp_client_ptr_)
+            {
                 written = tcp_client_ptr_->write(header_buffer_.data() + hsent, header_size_ - hsent);
-            } else {
+            }
+            else
+            {
                 ok = false;
                 break;
             }
-
-            if (written <= 0) { ok = false; break; }
-            hsent += (size_t)written;
-            if ((hsent % 1024) == 0) taskYIELD();
+            if (written <= 0)
+            {
+                ok = false;
+                break;
+            }
+            if (hsent%1024)
+            {
+                taskYIELD();
+            }
         }
-
-        if (!ok) {
+        if (!ok)
+        {
             Serial.println("NET: Failed to send header; closing socket and resetting");
-            if (tcp_client_stop_fn_) tcp_client_stop_fn_();
-            else if (tcp_client_ptr_) tcp_client_ptr_->stop();
-
-            if (consumer_ready_sp_) consumer_ready_sp_->store(false, std::memory_order_release);
-            if (clear_ring_and_reset_indices_fn_) clear_ring_and_reset_indices_fn_();
-
+            if (tcp_client_stop_fn_)
+            {
+                tcp_client_stop_fn_();
+            }
+            if (consumer_ready_sp_)
+            {
+                consumer_ready_sp_->store(false, std::memory_order_release);
+            }
+            Ring_clear_Rst();
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-
-        // optional: send payload after header if protocol requires (omitted)
-
-        // advance tail
-        if (ring_tail_sp_) ring_tail_sp_->store(tail + 1, std::memory_order_release);
-
+        
+        if (ring_tail_sp_)
+        {
+            ring_tail_sp_->store(tail+1, std::memory_order_release);
+        }
+        
         taskYIELD();
-    } // for
+    }
 }
