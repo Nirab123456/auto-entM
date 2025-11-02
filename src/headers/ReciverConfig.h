@@ -26,5 +26,7 @@ class ReciverConfig {
         bool isValid();
         void begin();
         bool ConnectTOReciverIP(WiFiClient* WiFi_TCPClient);
-
+        bool tcpWriteAll(Client* client, const uint8_t* data, size_t len,
+                        uint32_t timeout_ms = 2000, int max_retries = 3,
+                        size_t chunk_size = 1400);
 };
