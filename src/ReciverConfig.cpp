@@ -161,87 +161,79 @@ bool ReciverConfig::TCPWriteAll(
     size_t chunk_size
 )
 {
-    if (WiFiclient == nullptr || data == nullptr)
-    {
-        return false;
-    }
-    if (len == 0)
-    {
-        return true;
-    }
-    if (chunk_size == 0)
-    {
-        chunk_size = 1024;
-    }
+    if (!WiFiclient || !data) return false;
+    if (len == 0) return true;
+    if (chunk_size == 0) chunk_size = 1024;
 
     size_t total_sent = 0;
     int recon_attempts = 0;
-    bool connected = true;
-    if (!(WiFiclient->connected()))
-    {
-        connected = ConnectTOReciverIP(WiFiclient);
-    }
-    if (!connected)
-    {
-        return false;
-    }
-    WiFiclient->clear();
 
-    while (total_sent < len)
-    {
+    // Ensure connected (try to connect once)
+    if (!WiFiclient->connected()) {
+        if (!ConnectTOReciverIP(WiFiclient)) return false;
+    }
+
+    // Main send loop
+    while (total_sent < len) {
         size_t remaining = len - total_sent;
         size_t to_send = std::min(remaining, chunk_size);
 
-        const uint32_t chunk_deadline = millis() + timeout_ms;
+        // per-chunk timeout using wrap-safe pattern
+        const uint32_t start_ms = millis();
         bool chunk_sent = false;
 
-        while (millis() < chunk_deadline)
-        {
+        while ((uint32_t)(millis() - start_ms) < timeout_ms) {
+            if (!WiFiclient->connected()) break; // try reconnect outside inner loop
+
             int written = WiFiclient->write(data + total_sent, to_send);
-            if (written > 0)
-            {
-                total_sent += (size_t)written;
+            if (written > 0) {
+                total_sent += static_cast<size_t>(written);
                 chunk_sent = true;
-                if ((size_t)written < to_send)
-                {
-                    to_send = to_send - (size_t)written;
+
+                // partial write: keep trying for remainder of this chunk
+                if (static_cast<size_t>(written) < to_send) {
+                    to_send -= static_cast<size_t>(written);
+                    // small cooperative pause
                     taskYIELD();
-                    vTaskDelay;
+                    vTaskDelay(pdMS_TO_TICKS(1));
                     continue;
-                }
-                else
-                {
+                } else {
+                    // entire chunk sent
                     break;
                 }
             }
-            if (!(WiFiclient->connected()))
-            {
-                break;
-            }
+
+            // written == 0: socket buffer full or non-blocking; yield and retry
             taskYIELD();
             vTaskDelay(pdMS_TO_TICKS(1));
-        }
+        } // end per-chunk timeout loop
 
-        if (!chunk_sent)
-        {
+        if (!chunk_sent) {
+            // Failure for this chunk: try reconnecting (with backoff)
             recon_attempts++;
             WiFiclient->stop();
             vTaskDelay(pdMS_TO_TICKS(10 * recon_attempts));
-            if (recon_attempts > max_retries)
-            {
+
+            if (recon_attempts > max_retries) {
                 return false;
             }
-            if (!(ConnectTOReciverIP(WiFiclient)))
-            {
-                vTaskDelay(pdMS_TO_TICKS(5));
-            }
-            else
-            {
+            if (!ConnectTOReciverIP(WiFiclient)) {
+                // failed to reconnect -> small backoff & retry outer loop
+                vTaskDelay(pdMS_TO_TICKS(50));
                 continue;
             }
+
+            // reconnected, reset attempt counter and retry sending the same chunk
+            recon_attempts = 0;
+            continue;
         }
+
+        // successful chunk -> cooperation point
         taskYIELD();
-    }
+    } // end while total_sent < len
+
+    // Make a best-effort flush (may block until internal buffers are emptied)
     WiFiclient->flush();
+
     return true;
 }
