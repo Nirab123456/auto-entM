@@ -77,6 +77,14 @@ class AUDIO_RS
         size_t                                       header_size_{0};
         std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> write_tcp_header_fn_{nullptr};
 
+        // network slot queue and writer task handle
+        QueueHandle_t network_slot_queue_{nullptr};    // carries size_t slot indices
+        TaskHandle_t  network_writer_task_{nullptr};
+
+        // queue length: choose based on expected backlog (e.g. network latency / ring size)
+        static constexpr size_t NETWORK_SLOT_QUEUE_LEN = 16;
+
+
         // ring clear / reset callback (optional)
         // std::function<void()>                        clear_ring_and_reset_indices_fn_{nullptr};
 
@@ -104,6 +112,7 @@ class AUDIO_RS
         
         void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
         void Ring_clear_Rst();
+        void NetworkDataWriterLoop();
 
         // -----------------------
         // basic setters for atomics & buffers
