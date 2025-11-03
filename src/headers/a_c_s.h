@@ -10,3 +10,4 @@ inline constexpr uint16_t FRAMES_PER_PACKET = 1024;
 inline constexpr uint8_t DEFAULT_CHANNEL_COUNT = 2;
 inline constexpr size_t RING_SIZE = 64;
 inline constexpr char* PREF_NAMESPACE = "config";
+inline constexpr uint16_t DEFAULT_STOP_TASK_WAIT = 500;

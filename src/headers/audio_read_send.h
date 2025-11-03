@@ -81,6 +81,14 @@ class AUDIO_RS
         QueueHandle_t network_slot_queue_{nullptr};    // carries size_t slot indices
         TaskHandle_t  network_writer_task_{nullptr};
 
+        TaskHandle_t i2s_reader_handle_ = nullptr;
+        TaskHandle_t ring_writer_handle_ = nullptr;
+        TaskHandle_t network_handle_ = nullptr;
+        TaskHandle_t network_writer_handle_ = nullptr;
+        TaskHandle_t monitor_handle_ = nullptr;
+
+        std::atomic<bool> stopping_{false};
+
         // queue length: choose based on expected backlog (e.g. network latency / ring size)
         static constexpr size_t NETWORK_SLOT_QUEUE_LEN = 16;
 
@@ -96,6 +104,7 @@ class AUDIO_RS
         void FingerPrintLoop();
         void NetworkTaskLoop();
         void AudioTaskLoop();
+        void ClearHandleField(TaskHandle_t h);
 
     public:
         AUDIO_RS() = default;
@@ -163,12 +172,18 @@ class AUDIO_RS
 
         // start modular tasks (you already have similar; kept signature)
         bool start_task(
-            const char* name = AUDIOTASK, 
-            uint32_t stack = AUDIOTASK_STACK, 
-            UBaseType_t prio = AUDIOTASK_PRIORITY, 
-            BaseType_t core = AUDIOTASK_CORE,
-            TASK_TRAMPOLINE_FN trampoline = AudioTaskTrampoline,
-            void* arg = nullptr
+            const char* name,
+            uint32_t stack,
+            UBaseType_t prio,
+            BaseType_t core,
+            TASK_TRAMPOLINE_FN trampoline,
+            void* arg,
+            TaskHandle_t* out_handle
+        );
+
+        void stop_task(
+            TaskHandle_t handle,
+            TickType_t wait_ms
         );
 
         // convenience overrun setters
