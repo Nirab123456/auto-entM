@@ -50,16 +50,6 @@ void AUDIO_RS::set_ring_payload_flat(std::span<uint32_t> flat, size_t frames_per
     frames_per_packet_ = frames_per_packet;
 }
 
-void AUDIO_RS::AudioTaskTrampoline(void* pv)
-{
-    AUDIO_RS* self = static_cast<AUDIO_RS*>(pv);
-    if (!self)
-    {
-        vTaskDelete(nullptr);
-        return;
-    }
-    self ->AudioTaskLoop();
-}
 
 bool AUDIO_RS::start_task(const char* name,
                           uint32_t stack,
@@ -132,7 +122,7 @@ void AUDIO_RS::I2SReaderLoop()
 
 void AUDIO_RS::RingWriterLoop()
 {
-    if (i2s_buffer_.size() == 0 || ring_payload_flat_.size() == 0 || frames_per_packet == 0 || i2s_queue_ == nullptr)
+    if (i2s_buffer_.size() == 0 || ring_payload_flat_.size() == 0 || frames_per_packet_ == 0 || i2s_queue_ == nullptr)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
@@ -150,6 +140,7 @@ void AUDIO_RS::RingWriterLoop()
     const size_t frames = frames_per_packet_;
     const bool ring_power_of_two = (ring_slots & (ring_slots - 1)) == 0;
     const size_t ring_mask = ring_power_of_two ? (ring_slots - 1) : 0;
+    const size_t channel_index = (DEFAULT_CHANNEL_COUNT > 1) ? 1u : 0u;
     
     for (;;)
     {
@@ -226,34 +217,57 @@ void AUDIO_RS::RingWriterLoop()
         size_t slot = ring_power_of_two ? (head & ring_mask) : (head % ring_slots);
         uint32_t* row_ptr = ring_payload_flat_.data() + slot * frames;
         std::span<uint32_t> row(row_ptr, frames);
-        if (available_frames == frames)
+
+        size_t i = 0;
+        for (; i < available_frames && i < frames; i++)
         {
-            for (size_t i = 0; i < frames; i++)
+            size_t sample_word_index = (i * DEFAULT_CHANNEL_COUNT) + channel_index;
+            if (sample_word_index < i2s_buffer_.size())
             {
-                row[i] = i2s_buffer_[i * DEFAULT_CHANNEL_COUNT];
+                row[i] = i2s_buffer_[sample_word_index];
             }
-            for (size_t i = available_frames; i < frames; i++)
+            else
             {
-                row[i] = 0;
+                row[i] = 0u;
             }
         }
+        for (; i < frames; i++)
+        {
+            row[i] = 0u;
+        }
         
-        //meta
-        uint64_t first_sample_idx = abs_idx_sp_ ? abs_idx_sp_->load(std::memory_order_release) : 0;
+        uint64_t first_sample_idx = abs_idx_sp_ ? abs_idx_sp_->load(std::memory_order_relaxed) : 0;
         uint64_t ts = (uint64_t)esp_timer_get_time();
-
+        if (ring_frames_span_.size() == ring_slots)
+        {
+            ring_frames_span_[slot] = static_cast<uint16_t>(available_frames);
+        }
+        if (ring_first_index_span_.size()==ring_slots)
+        {
+            ring_first_index_span_[slot] = first_sample_idx;
+        }
+        if (ring_timestamp_span_.size()==ring_slots)
+        {
+            ring_timestamp_span_[slot] = ts;
+        }
         if (ring_head_sp_)
         {
-            ring_head_sp_->store(next_head,std::memory_order_release);
+            ring_head_sp_->store(next_head, std::memory_order_release);
         }
         if (abs_idx_sp_)
         {
-            abs_idx_sp_->fetch_add(
-                (uint64_t) available_frames,
-                std::memory_order_relaxed
-            );
+            abs_idx_sp_->fetch_add((uint64_t)available_frames, std::memory_order_relaxed);
         }
-        
+        if (network_slot_queue_)
+        {
+            size_t s = slot;
+            if (xQueueSend(network_slot_queue_, &s, 0) != pdTRUE)
+            {
+                /* code */
+            }
+            
+        }
+        taskYIELD();   
     }
     
 }
@@ -294,16 +308,32 @@ void AUDIO_RS::Ring_clear_Rst()
     }
     drop_count_newest_.store(0u, std::memory_order_relaxed);
     drop_count_oldest_.store(0u, std::memory_order_relaxed);
-    for (size_t i = 0; i < ring_payload_flat_.size() / frames_per_packet_; i++)
+    
+    const size_t ring_slots = (frames_per_packet_ > 0) ? (ring_payload_flat_.size() / frames_per_packet_) : 0;
+    if (ring_slots > 0)
     {
-        break;
+        if (ring_frames_span_.size() == ring_slots)
+        {
+            std::fill(ring_frames_span_.begin(), ring_frames_span_.end(), 0u);
+        }
+        if (ring_first_index_span_.size() == ring_slots)
+        {
+            std::fill(ring_first_index_span_.begin(), ring_first_index_span_.end(), 0u);
+        }
+        if (ring_timestamp_span_.size() == ring_slots)
+        {
+            std::fill(ring_timestamp_span_.begin(), ring_timestamp_span_.end(), 0u);
+        }
+        
+        
     }
+    
     xTaskResumeAll();
     
 }
 void AUDIO_RS::NetworkTaskLoop()
 {
-    if (ring_payload_flat_.size() == 0 || frames_per_packet == 0)
+    if (ring_payload_flat_.size() == 0 || frames_per_packet_ == 0)
     {
         Serial.println("NetworkLoop: ring or frames not configured");
         vTaskDelay(pdMS_TO_TICKS(100));
