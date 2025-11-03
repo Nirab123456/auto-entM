@@ -179,9 +179,9 @@ class AUDIO_RS
         // read-only stats
         uint32_t get_drop_count_newest() const { return drop_count_newest_.load(std::memory_order_relaxed); }
         uint32_t get_drop_count_oldest() const { return drop_count_oldest_.load(std::memory_order_relaxed); }
+        size_t get_frames_per_packet() const { return frames_per_packet_; }
 
         // expose some spans for read-only inspection if needed
-        std::span<uint32_t> i2s_buffer() const { return i2s_buffer_; }
-        std::span<uint32_t> ring_payload_flat() const { return ring_payload_flat_; }
-        size_t frames_per_packet() const { return frames_per_packet_; }
+        std::span<uint32_t> get_i2s_buffer() const { return i2s_buffer_; }
+        std::span<uint32_t> get_ring_payload_flat() const { return ring_payload_flat_; }
 };

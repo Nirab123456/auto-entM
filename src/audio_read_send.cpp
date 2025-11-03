@@ -354,32 +354,13 @@ void AUDIO_RS::NetworkTaskLoop()
 
     for (;;)
     {
-        IPAddress remote_ip;
-        uint16_t remote_port = 0;
-        bool have_cfg = false;
-        if (recfg_ptr_)
-        {
-            have_cfg = recfg_ptr_ ->isValid();
-            if (have_cfg)
-            {
-                recfg_ptr_->get(remote_ip,remote_port);
-            }
-        }
-        if (recfg_ptr_ && recfg_ptr_->isValid())
-        {
-            recfg_ptr_->get(remote_ip, remote_port);
-            have_cfg = true;
-        }
-        else
-        {
-            have_cfg = false;
-        }
-
-        bool connected = WiFi_tcp_client_ptr_ ? WiFi_tcp_client_ptr_ -> connected() : false;
+        bool have_cfg = (recfg_ptr_ && recfg_ptr_->isValid());
+        bool connected = (WiFi_tcp_client_ptr_ && WiFi_tcp_client_ptr_->connected());
         unsigned long now = millis();
+
         if (!connected)
         {
-            if (have_cfg && (WiFi.isConnected()))
+            if (have_cfg && WiFi.isConnected())
             {
                 if ((now - last_conn_attempt) >= CONNECTION_RETRY_INTERVAL_MS)
                 {
@@ -390,40 +371,42 @@ void AUDIO_RS::NetworkTaskLoop()
                     }
                     Ring_clear_Rst();
                     bool ok = false;
-
-                    if (tcp_connect_fn_)
+                    if (WiFi_tcp_client_ptr_ != nullptr)
                     {
-                        ok = tcp_connect_fn_(remote_ip,remote_port);
+                        ok = recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_);
                     }
-                    else if (WiFi_tcp_client_ptr_)
+                    else
                     {
-                        if (have_cfg)
-                        {
-                            ok = recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_);
-                        }
-
+                        //backbone for cross communication 
+                        // ok = tcp_connect_fn_(remote_ip,remote_port);
                     }
 
                     if (ok)
                     {
                         if (consumer_ready_sp_)
                         {
-                            consumer_ready_sp_->store(true,std::memory_order_release);
+                            consumer_ready_sp_->store(true, std::memory_order_release);
                         }
-                        else
-                        {
-                            if (consumer_ready_sp_)
-                            {
-                                consumer_ready_sp_->store(false,std::memory_order_release);
-                            }
-                            vTaskDelay(pdMS_TO_TICKS(20));
-                            continue;
-                        }
-                    }          
-                }      
+                    }
+                    else
+                    {
+                        //failed to connect
+                        vTaskDelay(pdMS_TO_TICKS(20));
+                        continue;
+                    }
+                }
+                
             }
+            
         }
 
+        if (!have_cfg && !WiFi.isConnected())
+        {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+
+        
         size_t tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
         size_t head = ring_head_sp_ ? ring_head_sp_->load(std::memory_order_acquire) : 0;
         if (tail ==head)
@@ -432,91 +415,41 @@ void AUDIO_RS::NetworkTaskLoop()
             continue;
         }
         size_t slot = tail & (ring_slots -1);
-        uint16_t frames = 0;
-        if (ring_frames_span_.size() == ring_slots)
+
+        if (ring_frames_span_.size() != ring_slots)
         {
-            frames = ring_frames_span_[slot];
-        }
-        else
-        {
-            Serial.println("NetworkLoop: ring_frames_span_ not configured");
+            Serial.println("NetworkTaskLoop: ring_frames_span_ not configured");
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
+        
 
-        if (frames == 0 || frames > (uint16_t)frames_per_packet_)
+
+        uint16_t frames = ring_frames_span_[slot];
+        if (frames == 0 || frames > static_cast<uint16_t>(frames_per_packet_))
         {
             if (ring_tail_sp_)
             {
-                ring_tail_sp_->store(tail+1, std::memory_order_release);
+                ring_tail_sp_->store(tail + 1, std::memory_order_release);
             }
-            continue;
+            continue;            
         }
-        
-        uint32_t seq = sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0;
-        uint64_t first_index = ring_first_index_span_.size() == ring_slots ? ring_first_index_span_[slot] : 0;
-        uint64_t ts = ring_timestamp_span_.size() == ring_slots ? ring_timestamp_span_[slot] : 0;
 
-        if (write_tcp_header_fn_) {
-            write_tcp_header_fn_(seq, first_index, ts, (uint16_t)frames);
-        } else {
-            // implement member write_tcp_header(seq, first_index, ts, frames)
-            WriteTCPHeader(seq, first_index, ts, (uint16_t)frames); // default writter
-        }
-        size_t hsent = 0;
-        bool ok = true;
-        while (hsent < header_size_)
+        if (network_slot_queue_)
         {
-            int written = 0;
-            if (tcp_write_fn_)
+            size_t s = slot;
+            if (xQueueSend(network_slot_queue_, &s, 0) != pdTRUE)
             {
-                written = tcp_write_fn_(header_buffer_.data() + hsent, header_size_ - hsent);
-            }
-            else if (WiFi_tcp_client_ptr_)
-            {
-                if (have_cfg)
-                {
-                    //implimint
-                }
-                
+                //queue full
             }
             else
             {
-                ok = false;
-                break;
+                //sussess
             }
-            if (written <= 0)
-            {
-                ok = false;
-                break;
-            }
-            if (hsent%1024)
-            {
-                taskYIELD();
-            }
+            
+            
         }
-        if (!ok)
-        {
-            Serial.println("NET: Failed to send header; closing socket and resetting");
-            if (tcp_client_stop_fn_)
-            {
-                tcp_client_stop_fn_();
-            }
-            if (consumer_ready_sp_)
-            {
-                consumer_ready_sp_->store(false, std::memory_order_release);
-            }
-            Ring_clear_Rst();
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-        
-        if (ring_tail_sp_)
-        {
-            ring_tail_sp_->store(tail+1, std::memory_order_release);
-        }
-        
-        taskYIELD();
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -528,121 +461,145 @@ void AUDIO_RS::NetworkDataWriterLoop()
         return;
     }
 
-    const size_t ring_slots = (ring_payload_flat_.size() / frames_per_packet_);
-    if (ring_slots == 0) {
+    if (frames_per_packet_ == 0 || ring_payload_flat_.size() == 0)
+    {
+        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelete(nullptr);
+        return;
+    }
+    const size_t ring_slots = ring_payload_flat_.size() / frames_per_packet_;
+    if (ring_slots == 0)
+    {
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
     }
 
-    for (;;) {
+
+    for (;;)
+    {
         size_t slot = 0;
-        // wait indefinitely for a new slot to send
-        if (xQueueReceive(network_slot_queue_, &slot, portMAX_DELAY) != pdTRUE) {
+        if (xQueueReceive(network_slot_queue_, &slot, portMAX_DELAY) != pdTRUE)
+        {
             continue;
         }
-
-        // sanity check slot
-        if (slot >= ring_slots) {
-            // invalid -> skip
+        if (slot >= ring_slots)
+        {
             continue;
         }
-
-        // Ensure connection/config is valid before attempting send
-        IPAddress remote_ip; uint16_t remote_port;
-        bool have_cfg = (recfg_ptr_ && recfg_ptr_->isValid());
-        if (!have_cfg || !WiFi.isConnected() || !WiFi_tcp_client_ptr_) {
-            // Not connected — put slot back or drop
-            // Option 1: Re-enqueue with delay (simple backoff)
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-
-        // read per-slot metadata (frames, first index, timestamp)
-        const size_t frames = (ring_frames_span_.size() == ring_slots) ? ring_frames_span_[slot] : 0;
-        const uint64_t first_index = (ring_first_index_span_.size() == ring_slots) ? ring_first_index_span_[slot] : 0;
-        const uint64_t ts = (ring_timestamp_span_.size() == ring_slots) ? ring_timestamp_span_[slot] : 0;
-
-        if (frames == 0 || frames > (uint16_t)frames_per_packet_) {
-            // invalid frames -> advance tail to avoid blocking pipeline
+        if (
+            ring_frames_span_.size() != ring_slots ||
+            ring_first_index_span_.size() != ring_slots||
+            ring_timestamp_span_.size() != ring_slots
+        )
+        {
             size_t tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
-            if (ring_tail_sp_) ring_tail_sp_->store(tail + 1, std::memory_order_release);
+            if (ring_tail_sp_)
+            {
+                ring_tail_sp_->store(tail + 1, std::memory_order_release);
+            }
+            continue;
+        }
+        
+        const uint16_t frames = ring_frames_span_[slot];
+        const uint64_t first_index = ring_first_index_span_[slot];
+        const uint64_t ts = ring_timestamp_span_[slot];
+
+        if (frames == 0 || frames > static_cast<uint16_t>(frames_per_packet_))
+        {
+            size_t tail =  0;
+            if (ring_tail_sp_)
+            {
+                tail = ring_tail_sp_->load(std::memory_order_acquire);
+                ring_tail_sp_->store(tail + 1, std::memory_order_release);
+            }
             continue;
         }
 
-        // Build header into header_buffer_ using callback or default writer
-        if (write_tcp_header_fn_) {
-            write_tcp_header_fn_(sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0,
-                                 first_index, ts, (uint16_t)frames);
-        } else {
-            uint32_t seq = sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0;
-            WriteTCPHeader(seq, first_index, ts, (uint16_t)frames);
+        uint32_t seq = sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0;
+
+        if (write_tcp_header_fn_)
+        {
+            //backbone for cross communication
+            write_tcp_header_fn_(seq, first_index, ts, frames);
+        }
+        else
+        {
+            WriteTCPHeader(seq, first_index, ts, frames);
         }
 
-        // prepare header pointer & size
         uint8_t* header_ptr = header_buffer_.data();
-        size_t   header_len = header_size_;
+        size_t header_len = header_size_;
 
-        // prepare payload pointer & size — payload is contiguous row of frames (uint32_t)
         uint32_t* row_ptr = ring_payload_flat_.data() + slot * frames_per_packet_;
         uint8_t* payload_ptr = reinterpret_cast<uint8_t*>(row_ptr);
-        size_t payload_len = (size_t)frames * sizeof(uint32_t);
+        size_t payload_len = static_cast<size_t>(frames) * sizeof(uint32_t);
 
         bool success = false;
-        // Prefer using ReciverConfig's tcpWriteAll to handle partial writes & reconnects robustly
-        if (recfg_ptr_) {
-            // wait for connection; if not connected, try to connect quickly
-            if (!WiFi_tcp_client_ptr_ || !WiFi_tcp_client_ptr_->connected()) {
-                // try to connect using ReciverConfig
-                if (!recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_)) {
-                    // connection failed, requeue slot for later
+
+        if (!WiFi_tcp_client_ptr_ || !WiFi_tcp_client_ptr_->connected())
+        {
+            if (recfg_ptr_ && WiFi_tcp_client_ptr_)
+            {
+                if(!recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_))
+                {
+                    xQueueSend(network_slot_queue_, &slot, 0);
                     vTaskDelay(pdMS_TO_TICKS(50));
-                    // optionally re-enqueue: xQueueSendToBack(network_slot_queue_, &slot, 0);
                     continue;
                 }
             }
-
-            // Write header
-            if (!recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, header_len, 2000, 3, 1400)) {
-                success = false;
-            } else {
-                // Write payload (can be large)
-                if (!recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, payload_ptr, payload_len, 4000, 3, 1400)) {
-                    success = false;
-                } else {
-                    success = true;
-                }
-            }
-        } else {
-            // fallback: write directly using WiFiClient (best-effort)
-            if (WiFi_tcp_client_ptr_ && WiFi_tcp_client_ptr_->connected()) {
-                // header
-                size_t sent_h = WiFi_tcp_client_ptr_->write(header_ptr, header_len);
-                if (sent_h == header_len) {
-                    size_t sent_p = WiFi_tcp_client_ptr_->write(payload_ptr, payload_len);
-                    success = (sent_p == payload_len);
-                } else success = false;
+            else
+            {
+                xQueueSendToBack(network_slot_queue_, &slot, 0);
+                vTaskDelay(pdMS_TO_TICKS(50));
+                continue;
             }
         }
 
-        if (!success) {
-            // On failure: close socket, notify consumer not ready, clear ring
-            if (tcp_client_stop_fn_) tcp_client_stop_fn_();
-            if (WiFi_tcp_client_ptr_) WiFi_tcp_client_ptr_->stop();
-            if (consumer_ready_sp_) consumer_ready_sp_->store(false, std::memory_order_release);
-            Ring_clear_Rst(); // or Ring_clear_Rst depending on your exact spelling
-            // Optionally back off before retrying
+        bool write_ok = false;
+        if (recfg_ptr_)
+        {
+            //header
+            write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, payload_len, 4000, 3, 1400);
+            success = write_ok;
+            if (success)
+            {
+                //payload                
+                write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, payload_ptr, payload_len, 4000, 3, 1400);
+                success = write_ok;
+            }
+        }
+        else
+        {
+            //fallback if needed 
+        }
+
+        if (!success)
+        {
+            if (tcp_client_stop_fn_)
+            {
+                tcp_client_stop_fn_();
+            }
+            if (WiFi_tcp_client_ptr_)
+            {
+                WiFi_tcp_client_ptr_->stop();
+            }
+            if (consumer_ready_sp_)
+            {
+                consumer_ready_sp_->store(false, std::memory_order_release);
+            }
+            Ring_clear_Rst();
+            xQueueSendToBack(network_slot_queue_, &slot, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
-
-        // On success: advance tail
-        if (ring_tail_sp_) {
+        
+        if (ring_tail_sp_)
+        {
             size_t tail = ring_tail_sp_->load(std::memory_order_acquire);
-            ring_tail_sp_->store(tail + 1, std::memory_order_release);
+            ring_tail_sp_->store(tail+1, std::memory_order_release);
         }
-
-        // cooperative yield
         taskYIELD();
-    } // end forever
+    }
+    
 }
