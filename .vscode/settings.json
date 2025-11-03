@@ -60,5 +60,6 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "span": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "D:/microcontroller/auto-entM/.pio/libdeps/4d_systems_esp32s3_gen4_r8n16/audio-tools/tests-cmake/resample"
 }
