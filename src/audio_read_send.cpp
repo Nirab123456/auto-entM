@@ -201,14 +201,16 @@ void AUDIO_RS::stop_task(TaskHandle_t handle, TickType_t wait_ms)
                 deleted = true;
                 break;
             }
-            
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-        
-        
-        
+        if (!deleted)
+        {
+            vTaskDelete(h);
+        }
+        ClearHandleField(h);
     }
     
-    
+    stopping_.store(false, std::memory_order_release);
     
 
 }
