@@ -8,7 +8,7 @@
 #include <vector>
 #include <WiFi.h>            // for WiFiClient and WiFi.isConnected()
 #include "task_prio_core_stack.h"
-
+#include "microphoneConfig.h"
 using TASK_TRAMPOLINE_FN = void(*)(void*);
 
 // forward declare your ReciverConfig (you provided this elsewhere)
@@ -21,7 +21,7 @@ class AUDIO_RS
             DROP_NEWEST = 0,
             DROP_OLDEST = 1
         };
-
+        
     private:
         // -----------------------
         // core shared atomics
@@ -95,6 +95,8 @@ class AUDIO_RS
         // queue length: choose based on expected backlog (e.g. network latency / ring size)
         static constexpr size_t NETWORK_SLOT_QUEUE_LEN = 16;
 
+        MicrophoneConfig micfg_;
+        std::atomic<bool> mic_configured_{false};
 
         // ring clear / reset callback (optional)
         // std::function<void()>                        clear_ring_and_reset_indices_fn_{nullptr};
@@ -122,7 +124,7 @@ class AUDIO_RS
             std::shared_ptr<std::atomic<size_t>> ring_tail = nullptr,
             std::shared_ptr<std::atomic<uint64_t>> abs_idx = nullptr
         );
-        bool initI2S(int i2s_port);
+        bool initI2S();
         void deinitI2S();
         void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
         void Ring_clear_Rst();
@@ -166,6 +168,14 @@ class AUDIO_RS
 
         // clear/reset callback
         void set_clear_ring_and_reset_indices_fn(std::function<void()> fn);
+
+        void set_micfg(const MicrophoneConfig &cfg)
+        {
+            micfg_ = cfg;
+            char* s; // has to globalize
+            bool ok = cfg.validate(s);
+            mic_configured_.store(ok, std::memory_order_release);
+        }
 
         // -----------------------
         // task/trampoline helpers

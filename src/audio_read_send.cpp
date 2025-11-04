@@ -217,7 +217,6 @@ void AUDIO_RS::stop_task(TaskHandle_t handle, TickType_t wait_ms)
 
 void AUDIO_RS::I2SReaderLoop()
 {
-    // Preconditions
     if (!i2s_installed_) {
         Serial.println("I2SReaderLoop: I2S driver not installed");
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -237,71 +236,69 @@ void AUDIO_RS::I2SReaderLoop()
         return;
     }
 
-    const size_t bytes_to_read = i2s_buffer_.size() * sizeof(uint32_t);
+    size_t bytes_to_read = i2s_buffer_.size() * sizeof(uint32_t);
     const TickType_t short_delay = pdMS_TO_TICKS(5);
 
-    // local counters for diagnostics
-    unsigned consecutive_read_failures = 0;
+    unsigned consecutive_read_failure = 0;
 
-    for (;;) {
-        // Quick exit on stop request (set by stop_task)
-        if (stopping_.load(std::memory_order_acquire)) break;
-
-        // If someone signaled (xTaskNotifyGive) we accept it as a polite shutdown request.
-        // Non-blocking check: if >0 then we were notified and should exit.
-        if (ulTaskNotifyTake(pdTRUE, 0) > 0) {
-            Serial.println("I2SReaderLoop: notified to exit");
+    for (;;)
+    {
+        if (stopping_.load(std::memory_order_acquire))
+        {
+            break;
+        }
+        
+        if (ulTaskNotifyTake(pdTRUE, 0) > 0)
+        {
+            Serial.println("I2SReaderLoop:: Notified to exit");
             break;
         }
 
-        size_t bytes_read = 0;
+        size_t read_bytes = 0;
         esp_err_t err = i2s_read(
             static_cast<i2s_port_t>(i2s_port_),
             i2s_buffer_.data(),
             bytes_to_read,
-            &bytes_read,
+            &read_bytes,
             portMAX_DELAY
         );
-
-        if (err != ESP_OK || bytes_read == 0) {
-            // transient I2S read failure — don't spam the log
-            ++consecutive_read_failures;
-            if ((consecutive_read_failures & 0xFF) == 0) { // print rarely
-                Serial.printf("I2SReaderLoop: read err=%d bytes=%u\n", (int)err, (unsigned)bytes_read);
+        
+        if (err != ESP_OK || read_bytes == 0)
+        {
+            ++consecutive_read_failure;
+            if ((consecutive_read_failure & 0xff) == 0)
+            {
+                Serial.printf("I2SReaderLoop: read err=%d bytes=%d\n",(int)err, (unsigned)bytes_to_read);
             }
             vTaskDelay(short_delay);
             continue;
         }
-        consecutive_read_failures = 0;
-
-        // Try to push bytes_read into the queue.
-        BaseType_t sent = xQueueSend(i2s_queue_, &bytes_read, 0);
-        if (sent != pdTRUE) {
-            // queue is full — handle according to configured policy.
-            if (overrun_policy_ == OverRunPolicy::DROP_OLDEST) {
-                // Remove one oldest item, then push current
+        consecutive_read_failure = 0;
+        BaseType_t sent = xQueueSend(i2s_queue_, &bytes_to_read, 0);
+        if (sent != pdTRUE)
+        {
+            if (overrun_policy_ == OverRunPolicy::DROP_OLDEST)
+            {
                 size_t dropped;
-                if (xQueueReceive(i2s_queue_, &dropped, 0) == pdTRUE) {
+                if (xQueueReceive(i2s_queue_, &dropped, 0) == pdTRUE)
+                {
                     // we dropped 'dropped' (bytes count) older sample
                 }
-                // try send again (best effort)
-                if (xQueueSend(i2s_queue_, &bytes_read, 0) != pdTRUE) {
-                    // still failed — increase drop counter and continue
-                    drop_count_newest_.fetch_add(1, std::memory_order_relaxed);
-                }
-            } else { // DROP_NEWEST (default)
-                // drop this newest read to preserve the older queued item
-                drop_count_newest_.fetch_add(1, std::memory_order_relaxed);
+                if (xQueueSend(i2s_queue_, &bytes_to_read, 0) !=pdTRUE)
+                {
+                    drop_count_newest_.fetch_add(1,std::memory_order_relaxed);
+                }  
             }
+            else if (overrun_policy_ == OverRunPolicy::DROP_NEWEST)
+            {
+                drop_count_newest_.fetch_add(1,std::memory_order_relaxed);
+            }   
         }
-
-        // Gentle yield to allow writer/network tasks to run
+        
         taskYIELD();
     }
-
-    // Clean exit
-    Serial.println("I2SReaderLoop: exiting");
-    vTaskDelete(nullptr);
+    Serial.println("I2SReaderLoop:: Exiting");
+    vTaskDelete(nullptr);    
 }
 
 
@@ -790,10 +787,14 @@ void AUDIO_RS::NetworkDataWriterLoop()
 }
 
 // Initialize I2S for capture. Returns true on success.
-bool AUDIO_RS::initI2S(int i2s_port)
+bool AUDIO_RS::initI2S()
 {
     // store port for later deinit
-    i2s_port_ = i2s_port;
+    if (!mic_configured_.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+    
 
     // Sanity: we need frames_per_packet_ to compute DMA sizing
     if (frames_per_packet_ == 0) {
@@ -819,25 +820,9 @@ bool AUDIO_RS::initI2S(int i2s_port)
     int dma_buf_count = 6;
 
     // Configure I2S driver
-    i2s_config_t i2s_config = {};
-    i2s_config.mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX);
-    i2s_config.sample_rate = static_cast<int>(SAMPLE_RATE);
-    i2s_config.bits_per_sample = I2S_BITS; // your existing I2S_BITS constant
-    i2s_config.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT; // stereo input layout
-    i2s_config.communication_format = static_cast<i2s_comm_format_t>(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB);
-    i2s_config.intr_alloc_flags = 0; // or ESP_INTR_FLAG_LEVEL1 if you want
-    i2s_config.dma_buf_count = dma_buf_count;
-    i2s_config.dma_buf_len = static_cast<int>(dma_buf_len);
-    i2s_config.use_apll = true; // keep per your existing code (requires board support)
-    i2s_config.tx_desc_auto_clear = false;
-    i2s_config.fixed_mclk = 0;
-
+    i2s_config_t i2s_config = micfg_.i2s_configuration;
     // pin config - using your board-level constants
-    i2s_pin_config_t pin_config = {};
-    pin_config.bck_io_num = PIN_CLK;
-    pin_config.ws_io_num = PIN_WS;
-    pin_config.data_out_num = I2S_PIN_NO_CHANGE;
-    pin_config.data_in_num = PIN_SD;
+    i2s_pin_config_t pin_config = micfg_.i2spinconfiguration;
 
     esp_err_t err;
 
@@ -860,7 +845,7 @@ bool AUDIO_RS::initI2S(int i2s_port)
     i2s_zero_dma_buffer(static_cast<i2s_port_t>(i2s_port_));
 
     i2s_installed_ = true;
-    Serial.printf("I2S: initialized on port %d (dma_buf_count=%d dma_buf_len=%u)\n", i2s_port, dma_buf_count, (unsigned)dma_buf_len);
+    Serial.printf("I2S: initialized on port %d (dma_buf_count=%d dma_buf_len=%u)\n", micfg_.i2s_port, dma_buf_count, (unsigned)dma_buf_len);
     return true;
 }
 
@@ -868,7 +853,7 @@ void AUDIO_RS::deinitI2S()
 {
     if (!i2s_installed_) return;
     // Stop any I2S activity as needed - driver uninstall handles it
-    i2s_driver_uninstall(static_cast<i2s_port_t>(i2s_port_));
+    i2s_driver_uninstall(micfg_.i2s_port);
     i2s_installed_ = false;
     Serial.println("I2S: driver uninstalled");
 }
