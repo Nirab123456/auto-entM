@@ -103,6 +103,115 @@ bool AUDIO_RS::start_task(const char* name,
     return false;
 }
 
+bool AUDIO_RS::IsKnownHandle(TaskHandle_t h) const
+{
+    return (
+            h == i2s_reader_handle_ ||
+            h == ring_writer_handle_ ||
+            h == network_handle_ ||
+            h == network_writer_handle_ ||
+            h == monitor_handle_
+    );
+}
+
+void AUDIO_RS::stop_task(TaskHandle_t handle, TickType_t wait_ms)
+{
+    stopping_.store(true, std::memory_order_release);
+
+    if (consumer_ready_sp_)
+    {
+        consumer_ready_sp_->store(false,std::memory_order_release);
+    }
+
+    if (WiFi_tcp_client_ptr_ && WiFi_tcp_client_ptr_->connected())
+    {
+        WiFi_tcp_client_ptr_->stop();
+    }
+    
+    if (i2s_queue_)
+    {
+        xQueueReset(i2s_queue_);
+    }
+    if (network_slot_queue_)
+    {
+        xQueueReset(network_slot_queue_);
+    }
+    if (network_slot_queue_) {
+        // optional: send sentinel value, depends on your design
+    }    
+    std::vector<TaskHandle_t> targets;
+    if (handle == nullptr)
+    {
+        if (i2s_reader_handle_)
+        {
+            targets.push_back(i2s_reader_handle_);
+        }
+        if (ring_writer_handle_)
+        {
+            targets.push_back(ring_writer_handle_);
+        }
+        if (network_handle_)
+        {
+            targets.push_back(network_handle_);
+        }
+        if (network_writer_handle_)
+        {
+            targets.push_back(network_writer_handle_);
+        }
+        if (monitor_handle_)
+        {
+            targets.push_back(monitor_handle_);
+        }
+    }
+    else
+    {
+        if (!IsKnownHandle(handle))
+        {
+            Serial.printf("Warning: stop_task() unknown handle %p — ignoring\n", (void*)handle);
+            return;           
+        }
+        targets.push_back(handle);
+    }
+    std::sort(targets.begin(), targets.end());
+    targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+
+    for (TaskHandle_t h : targets)
+    {
+        if (h == nullptr)
+        {
+            continue;
+        }
+        if (h == xTaskGetCurrentTaskHandle())
+        {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelete(nullptr);
+            continue;
+        }
+        
+        xTaskNotifyGive(h);
+
+        const TickType_t start = xTaskGetTickCount();
+        const TickType_t wait_ticks = (wait_ms == portMAX_DELAY) ? portMAX_DELAY : pdMS_TO_TICKS(wait_ms);
+        bool deleted = false;
+        while ((xTaskGetTickCount() - start) < wait_ticks)
+        {
+            eTaskState st = eTaskGetState(h);
+            if (st == eDeleted)
+            {
+                deleted = true;
+                break;
+            }
+            
+        }
+        
+        
+        
+    }
+    
+    
+    
+
+}
 
 void AUDIO_RS::RingWriterLoop()
 {

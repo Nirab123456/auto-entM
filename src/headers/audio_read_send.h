@@ -105,6 +105,7 @@ class AUDIO_RS
         void NetworkTaskLoop();
         void AudioTaskLoop();
         void ClearHandleField(TaskHandle_t h);
+        bool IsKnownHandle(TaskHandle_t h) const;
 
     public:
         AUDIO_RS() = default;
