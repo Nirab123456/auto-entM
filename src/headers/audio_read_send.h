@@ -26,6 +26,9 @@ class AUDIO_RS
         // -----------------------
         // core shared atomics
         // -----------------------
+        bool i2s_installed_ = false;
+        int i2s_port_ = I2S_NUM_0;   // allow later reconfiguration if needed
+
         std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
@@ -119,7 +122,8 @@ class AUDIO_RS
             std::shared_ptr<std::atomic<size_t>> ring_tail = nullptr,
             std::shared_ptr<std::atomic<uint64_t>> abs_idx = nullptr
         );
-        
+        bool initI2S(int i2s_port);
+        void deinitI2S();
         void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
         void Ring_clear_Rst();
         void NetworkDataWriterLoop();
