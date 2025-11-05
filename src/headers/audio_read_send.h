@@ -27,12 +27,14 @@ class AUDIO_RS
         // core shared atomics
         // -----------------------
         bool i2s_installed_ = false;
+        const uint32_t HEADER_MAGIC_ = 0x45535032;
 
         std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
         std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
         std::shared_ptr<std::atomic<uint32_t>>      sequence_counter_{nullptr};
+        std::shared_ptr<std::atomic<uint8_t>>       CHANNEL_COUNT_{nullptr};
 
         // overrun policy & stats
         OverRunPolicy  overrun_policy_ = OverRunPolicy::DROP_NEWEST;
@@ -111,6 +113,7 @@ class AUDIO_RS
         void ClearHandleField(TaskHandle_t h);
         bool IsKnownHandle(TaskHandle_t h) const;
         bool stopping_check_del(char* taskname);
+        void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
 
     public:
         AUDIO_RS() = default;
@@ -126,7 +129,6 @@ class AUDIO_RS
         );
         bool initI2S();
         void deinitI2S();
-        void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
         void Ring_clear_Rst();
         void NetworkDataWriterLoop();
 
@@ -169,13 +171,7 @@ class AUDIO_RS
         // clear/reset callback
         void set_clear_ring_and_reset_indices_fn(std::function<void()> fn);
 
-        void set_micfg(const MicrophoneConfig &cfg)
-        {
-            micfg_ = cfg;
-            char* s; // has to globalize
-            bool ok = micfg_.validate(s);
-            mic_configured_.store(ok, std::memory_order_release);
-        }
+        void set_micfg(const MicrophoneConfig &cfg);
 
         // -----------------------
         // task/trampoline helpers

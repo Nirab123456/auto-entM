@@ -348,3 +348,38 @@ void AUDIO_RS::NetworkDataWriterLoop()
     }
     
 }
+
+void AUDIO_RS::WriteTCPHeader(
+    uint32_t seq,
+    uint64_t first_sample_index,
+    uint64_t timestamp_us,
+    uint16_t number_of_frames
+)
+{
+    header_buffer_[0] = (uint8_t)(HEADER_MAGIC_ & 0xff);
+    header_buffer_[1] = (uint8_t)((HEADER_MAGIC_ >> 8) & 0xff);
+    header_buffer_[2] = (uint8_t)((HEADER_MAGIC_ >> 16) & 0xff);
+    header_buffer_[3] = (uint8_t)((HEADER_MAGIC_ >> 24) & 0xff);
+    for (size_t i = 0; i < MIN_BYTES_READ; i++)
+    {
+        header_buffer_[4+i] = (uint8_t)((seq >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff));
+    }
+    for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
+    {
+        header_buffer_[8+i] = (uint8_t)((first_sample_index >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff));
+    }
+    for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
+    {
+        header_buffer_[16+i] = (uint8_t)(timestamp_us >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+    }
+    header_buffer_[24] = (uint8_t)(number_of_frames & 0xff);
+    header_buffer_[25] = (uint8_t)((number_of_frames >> 8) & 0xff);
+    header_buffer_[26] = (uint8_t)CHANNEL_COUNT_->load(std::memory_order_acquire);
+    header_buffer_[27] = (uint8_t)(static_cast<std::size_t>(micfg_.i2s_configuration.bits_per_sample / SIZE_OF_A_BYTE_IN_BITS));
+    for (size_t i = 0; i < MIN_BYTES_READ; i++)
+    {
+        header_buffer_[28+i] = (uint8_t)(micfg_.i2s_configuration.sample_rate >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+    }
+    //finish header    
+    
+}
