@@ -27,7 +27,6 @@ class AUDIO_RS
         // core shared atomics
         // -----------------------
         bool i2s_installed_ = false;
-        int i2s_port_ = I2S_NUM_0;   // allow later reconfiguration if needed
 
         std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
@@ -111,6 +110,7 @@ class AUDIO_RS
         void AudioTaskLoop();
         void ClearHandleField(TaskHandle_t h);
         bool IsKnownHandle(TaskHandle_t h) const;
+        bool stopping_check_del(char* taskname);
 
     public:
         AUDIO_RS() = default;
@@ -173,7 +173,7 @@ class AUDIO_RS
         {
             micfg_ = cfg;
             char* s; // has to globalize
-            bool ok = cfg.validate(s);
+            bool ok = micfg_.validate(s);
             mic_configured_.store(ok, std::memory_order_release);
         }
 

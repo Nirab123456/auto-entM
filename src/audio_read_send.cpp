@@ -63,7 +63,7 @@ bool AUDIO_RS::start_task(const char* name,
     void* pv_arg = (arg != nullptr) ? arg : this;
     TaskHandle_t created_handle = nullptr;
     BaseType_t ok;
-    if (core > 0)
+    if (core >= 0)
     {
         ok = xTaskCreatePinnedToCore(
             trampoline,
@@ -215,8 +215,23 @@ void AUDIO_RS::stop_task(TaskHandle_t handle, TickType_t wait_ms)
 
 }
 
+bool AUDIO_RS::stopping_check_del(char* taskname)
+{
+    if (stopping_.load(std::memory_order_acquire))
+    {
+        Serial.printf("AUDIO_RS::%s stopping\n", taskname);
+        return true;
+    }
+    return false;
+}
+
 void AUDIO_RS::I2SReaderLoop()
 {
+    if (stopping_check_del("I2SReaderLoop"))
+    {
+        vTaskDelete(nullptr);
+    }
+    
     if (!i2s_installed_) {
         Serial.println("I2SReaderLoop: I2S driver not installed");
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -256,7 +271,7 @@ void AUDIO_RS::I2SReaderLoop()
 
         size_t read_bytes = 0;
         esp_err_t err = i2s_read(
-            static_cast<i2s_port_t>(i2s_port_),
+            micfg_.i2s_port,
             i2s_buffer_.data(),
             bytes_to_read,
             &read_bytes,
@@ -274,7 +289,7 @@ void AUDIO_RS::I2SReaderLoop()
             continue;
         }
         consecutive_read_failure = 0;
-        BaseType_t sent = xQueueSend(i2s_queue_, &bytes_to_read, 0);
+        BaseType_t sent = xQueueSend(i2s_queue_, &read_bytes, 0);
         if (sent != pdTRUE)
         {
             if (overrun_policy_ == OverRunPolicy::DROP_OLDEST)
@@ -284,7 +299,7 @@ void AUDIO_RS::I2SReaderLoop()
                 {
                     // we dropped 'dropped' (bytes count) older sample
                 }
-                if (xQueueSend(i2s_queue_, &bytes_to_read, 0) !=pdTRUE)
+                if (xQueueSend(i2s_queue_, &read_bytes, 0) !=pdTRUE)
                 {
                     drop_count_newest_.fetch_add(1,std::memory_order_relaxed);
                 }  
@@ -304,6 +319,11 @@ void AUDIO_RS::I2SReaderLoop()
 
 void AUDIO_RS::RingWriterLoop()
 {
+    if (stopping_check_del("RingWriterLoop"))
+    {
+        vTaskDelete(nullptr);
+    }
+    
     if (i2s_buffer_.size() == 0 || ring_payload_flat_.size() == 0 || frames_per_packet_ == 0 || i2s_queue_ == nullptr)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -515,6 +535,11 @@ void AUDIO_RS::Ring_clear_Rst()
 }
 void AUDIO_RS::NetworkTaskLoop()
 {
+    if (stopping_check_del("NetworkTaskLoop"))
+    {
+        vTaskDelete(nullptr);
+    }
+
     if (ring_payload_flat_.size() == 0 || frames_per_packet_ == 0)
     {
         Serial.println("NetworkLoop: ring or frames not configured");
@@ -637,6 +662,11 @@ void AUDIO_RS::NetworkTaskLoop()
 
 void AUDIO_RS::NetworkDataWriterLoop()
 {
+    if (stopping_check_del("NetworkDataWriterLoop"))
+    {
+        vTaskDelete(nullptr);
+    }
+
     if (!network_slot_queue_) {
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
@@ -742,7 +772,7 @@ void AUDIO_RS::NetworkDataWriterLoop()
         if (recfg_ptr_)
         {
             //header
-            write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, payload_len, 4000, 3, 1400);
+            write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, header_len, 4000, 3, 1400);
             success = write_ok;
             if (success)
             {
@@ -904,5 +934,5 @@ bool MicrophoneConfig::validate(char* err)
         err = "MicrophoneConfig::i2s pins must be within bound (0 - 39) or board spesific";
         return false;   
     }
-    
+    return true;   
 }
