@@ -380,6 +380,8 @@ void AUDIO_RS::WriteTCPHeader(
     {
         header_buffer_[28+i] = (uint8_t)(micfg_.i2s_configuration.sample_rate >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
     }
-    //finish header    
+    //finish header  
+    header_buffer_[32] = (uint8_t)(FORMAT_INT32_LEFT24_ & 0xff);  
+    header_buffer_[33] = (uint8_t)((FORMAT_INT32_LEFT24_ >> 8) & 0xff);
     
 }

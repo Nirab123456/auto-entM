@@ -28,6 +28,7 @@ class AUDIO_RS
         // -----------------------
         bool i2s_installed_ = false;
         const uint32_t HEADER_MAGIC_ = 0x45535032;
+        const uint8_t FORMAT_INT32_LEFT24_ = 1;
 
         std::shared_ptr<std::atomic<bool>>          consumer_ready_sp_{nullptr};
         std::shared_ptr<std::atomic<size_t>>        ring_head_sp_{nullptr};
@@ -109,7 +110,6 @@ class AUDIO_RS
         void RingWriterLoop();
         void FingerPrintLoop();
         void NetworkTaskLoop();
-        void AudioTaskLoop();
         void ClearHandleField(TaskHandle_t h);
         bool IsKnownHandle(TaskHandle_t h) const;
         bool stopping_check_del(char* taskname);
@@ -176,10 +176,10 @@ class AUDIO_RS
         // -----------------------
         // task/trampoline helpers
         // -----------------------
-        static void AudioTaskTrampoline(void* pv);
         static void I2SReadTrampoline(void* pv);
         static void RingWriterFRMI2STrampoline(void* pv);
-        static void NetworkTaskTrampoline(void* pv);
+        static void NetworkTaskLoopTrampoline(void* pv);
+        static void NetworkDataWriterLoopTrampoline(void* pv);
 
         // start modular tasks (you already have similar; kept signature)
         bool start_task(
