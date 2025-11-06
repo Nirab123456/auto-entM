@@ -107,8 +107,8 @@ void setup() {
 
     // 7) Configure network writer to use ReciverConfig internally (your AUDIO_RS Network loop uses recfg_ptr_)
     // If you want to provide a WiFiClient pointer, pass it too:
-    static WiFiClient tcp_client;
-    audio_instance.set_tcp_client_ptr(&tcp_client);
+    static WiFiClient WiFi_client;
+    audio_instance.set_WiFi_client_ptr(&WiFi_client);
 
     // 8) Start tasks (trampolines already declared in header)
     TaskHandle_t h;

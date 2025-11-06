@@ -161,7 +161,7 @@ class AUDIO_RS
         void set_reciver_config_getter(std::function<bool(IPAddress&, uint16_t&)> getter);
 
         // TCP client pointer (WiFiClient), or alternatively set the connect/write callbacks
-        void set_tcp_client_ptr(WiFiClient* client);
+        void set_WiFi_client_ptr(WiFiClient* client);
         void set_tcp_connect_fn(std::function<bool(IPAddress, uint16_t)> connect_fn);
         void set_tcp_write_fn(std::function<int(const uint8_t*, size_t)> write_fn);
         void set_tcp_client_stop_fn(std::function<void()> stop_fn);

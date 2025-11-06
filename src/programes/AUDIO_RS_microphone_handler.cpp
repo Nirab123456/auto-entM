@@ -5,18 +5,22 @@
 void AUDIO_RS::set_micfg(const MicrophoneConfig &cfg)
 {
     micfg_ = cfg;
-    uint8_t channel_count = 0;
     char* s = nullptr;
-    bool ok = micfg_.validate(s, channel_count);
+    bool ok = micfg_.validate(s);
     mic_configured_.store(ok, std::memory_order_release);
     if (CHANNEL_COUNT_)
     {
-        CHANNEL_COUNT_->store(channel_count,std::memory_order_relaxed);
+        CHANNEL_COUNT_->store(micfg_.channel_count,std::memory_order_relaxed);
+    }   
+}
+bool MicrophoneConfig::validate(char*& err)
+{
+    if (channel_count != 1 || channel_count !=2)
+    {
+        err = "MicrophoneConfig::Channel should be either MONO / STEREO";
+        return false;
     }
     
-}
-bool MicrophoneConfig::validate(char*& err, uint8_t &channel_count)
-{
     if (!(i2s_port == I2S_NUM_0 || i2s_port == I2S_NUM_1))
     {
         err = "MicrophoneConfig::Wrong I2s port";
@@ -47,29 +51,16 @@ bool MicrophoneConfig::validate(char*& err, uint8_t &channel_count)
         err = "dma_buf_len out of range (4..8192).";
         return false;
     }
-    if (i2s_configuration.channel_format)
+    if (
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_ONLY_RIGHT ||
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_ONLY_LEFT  ||
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_RIGHT_LEFT ||
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_MULTIPLE ||
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_ALL_LEFT ||
+        i2s_configuration.channel_format != I2S_CHANNEL_FMT_ALL_RIGHT
+    )
     {
-        if (
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_ONLY_RIGHT ||
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_ONLY_LEFT
-         )
-        {
-            channel_count = 1;
-        }
-        else if (
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_RIGHT_LEFT ||
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_MULTIPLE ||
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_ALL_LEFT ||
-            i2s_configuration.channel_format == I2S_CHANNEL_FMT_ALL_RIGHT
-            )
-        {
-            channel_count = 2;
-        }
-        else
-        {
-            return false;
-        }
-        
+        return false;        
     }
     
 
