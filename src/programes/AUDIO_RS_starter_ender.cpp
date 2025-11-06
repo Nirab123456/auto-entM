@@ -223,3 +223,50 @@ bool AUDIO_RS::stopping_check_del(char* taskname)
     }
     return false;
 }
+
+void AUDIO_RS::set_ring_metadata_spans(
+    std::span<uint16_t> frames_span,
+    std::span<uint64_t> first_index_span,
+    std::span<uint64_t> ts_us_span
+)
+{
+    ring_frames_span_ = frames_span;
+    ring_first_index_span_ = first_index_span;
+    ring_timestamp_span_ = ts_us_span;
+
+    if (ring_payload_flat_.size() != 0 && frames_per_packet_ != 0)
+    {
+        size_t ring_slots = ring_payload_flat_.size() / frames_per_packet_;
+        if (ring_slots == 0)
+        {
+            Serial.println("AUDIO_RS::set_ring_metadata_spans: warning - computed ring_slots == 0");
+        }
+        else
+        {
+            bool ok = true;
+            if (ring_frames_span_.size() != ring_slots) {
+                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_frames_span size %u != ring_slots %u\n",
+                              (unsigned)ring_frames_span_.size(), (unsigned)ring_slots);
+                ok = false;
+            }
+            if (ring_first_index_span_.size() != ring_slots) {
+                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_first_index_span size %u != ring_slots %u\n",
+                              (unsigned)ring_first_index_span_.size(), (unsigned)ring_slots);
+                ok = false;
+            }
+            if (ring_timestamp_span_.size() != ring_slots) {
+                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_timestamp_span size %u != ring_slots %u\n",
+                              (unsigned)ring_timestamp_span_.size(), (unsigned)ring_slots);
+                ok = false;
+            }
+            if (!ok)
+            {
+                Serial.println("AUDIO_RS::set_ring_metadata_spans: metadata spans mismatch — please provide arrays with length == ring_slots");
+            }
+            else
+            {
+                Serial.println("AUDIO_RS::set_ring_metadata_spans: metadata spans configured OK");
+            }
+        }
+    }
+}
