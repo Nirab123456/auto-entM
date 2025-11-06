@@ -86,11 +86,7 @@ class AUDIO_RS
         QueueHandle_t network_slot_queue_{nullptr};    // carries size_t slot indices
         TaskHandle_t  network_writer_task_{nullptr};
 
-        TaskHandle_t i2s_reader_handle_ = nullptr;
-        TaskHandle_t ring_writer_handle_ = nullptr;
-        TaskHandle_t network_handle_ = nullptr;
-        TaskHandle_t network_writer_handle_ = nullptr;
-        TaskHandle_t monitor_handle_ = nullptr;
+
 
         std::atomic<bool> stopping_{false};
 
@@ -116,6 +112,13 @@ class AUDIO_RS
         void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
 
     public:
+
+        TaskHandle_t i2s_reader_handle_ = nullptr;
+        TaskHandle_t ring_writer_handle_ = nullptr;
+        TaskHandle_t network_handle_ = nullptr;
+        TaskHandle_t network_writer_handle_ = nullptr;
+        TaskHandle_t monitor_handle_ = nullptr;
+        
         AUDIO_RS() = default;
 
         AUDIO_RS(
