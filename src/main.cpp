@@ -65,4 +65,43 @@ void setup()
 
     audio_rs_instance.set_reciver_config_ptr(&recivercfg);
 
+    static WiFiClient WiFi_client;
+
+    WiFi.begin(WIFI_SSID, WiFi_PASS);
+    unsigned long started = millis();
+    const unsigned long timeout_ms = 10000;
+    while (
+        WiFi.status() != WL_CONNECTED &&
+        (millis() - started) < timeout_ms 
+    )
+    {
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("WiFi connected");
+    } else {
+        Serial.println("WiFi not connected (continuing — network tasks will retry)");
+    }
+
+    if (!audio_rs_instance.initI2S())
+    {
+        Serial.println("I2S init Failed");
+    }
+
+    audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
+    // 8) Start tasks (trampolines already declared in header)
+    TaskHandle_t h;
+    audio_rs_instance.start_task("I2SRead", 4096, 2, 1, AUDIO_RS::I2SReadTrampoline, &audio_rs_instance, &h);
+    audio_rs_instance.start_task("RingWriter", 8192, 2, 1, AUDIO_RS::RingWriterFRMI2STrampoline, &audio_rs_instance, &h);
+    audio_rs_instance.start_task("NetworkTask", 8192, 2, 1, AUDIO_RS::NetworkTaskLoopTrampoline, &audio_rs_instance, &h);
+    audio_rs_instance.start_task("NetWriter", 8192, 2, 1, AUDIO_RS::NetworkDataWriterLoopTrampoline, &audio_rs_instance, &h);
+
+    // no console input — ReciverConfig determines where we connect (from stored preferences)
+    // Optionally you can programmatically update recfg.save("192.168.x.y", port) elsewhere (OTA/UI).
+}
+
+void loop() {
+    // Idle; tasks do the work.
+    vTaskDelay(pdMS_TO_TICKS(5000));
 }

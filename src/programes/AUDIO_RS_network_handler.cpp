@@ -5,7 +5,14 @@
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
 
-
+void AUDIO_RS::set_WiFi_client_ptr(WiFiClient* client)
+{
+    if (client)
+    {
+        WiFi_tcp_client_ptr_ = client;
+    }
+    
+}
 
 void AUDIO_RS::Ring_clear_Rst()
 {
