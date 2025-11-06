@@ -14,6 +14,15 @@ void AUDIO_RS::set_WiFi_client_ptr(WiFiClient* client)
     
 }
 
+void AUDIO_RS::set_reciver_config_ptr(ReciverConfig* ptr)
+{
+    if (ptr)
+    {
+        recfg_ptr_ = ptr;
+    }
+    
+}
+
 void AUDIO_RS::Ring_clear_Rst()
 {
     if (ring_payload_flat_.size() == 0 &&

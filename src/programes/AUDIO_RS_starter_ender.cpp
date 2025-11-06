@@ -270,3 +270,9 @@ void AUDIO_RS::set_ring_metadata_spans(
         }
     }
 }
+
+
+void AUDIO_RS::set_sequence_counter(std::shared_ptr<std::atomic<uint32_t>> seq)
+{
+    sequence_counter_ = seq;
+}
