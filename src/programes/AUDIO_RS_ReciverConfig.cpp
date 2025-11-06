@@ -2,11 +2,7 @@
 #include <Client.h> // base class for WiFiClient
 
 
-ReciverConfig::ReciverConfig()
-{}
 
-ReciverConfig::~ReciverConfig()
-{}
 
 void ReciverConfig::begin()
 {
@@ -111,7 +107,7 @@ bool ReciverConfig::ConnectTOReciverIP(WiFiClient* WiFi_TCPClient)
         ip_copy = ip_;
         port_copy = port_;
     }
-    if (ip_copy == IPAddress(0,0,0,0) || port == 0)
+    if (ip_copy == IPAddress(0,0,0,0) || port_copy == 0)
     {
         return false;
     }

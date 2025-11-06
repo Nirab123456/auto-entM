@@ -7,7 +7,6 @@
 #include <functional>
 #include <vector>
 #include <WiFi.h>            // for WiFiClient and WiFi.isConnected()
-#include "task_prio_core_stack.h"
 #include "microphoneConfig.h"
 using TASK_TRAMPOLINE_FN = void(*)(void*);
 

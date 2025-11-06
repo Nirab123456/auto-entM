@@ -1,3 +1,4 @@
+#pragma once
 #include "headers/audio_read_send.h"   // your AUDIO_RS header (adjust path if needed)
 #include "headers/microphoneConfig.h" // your MicrophoneConfig definition (adjust path)
 #include "headers/ReciverConfig.h"    // optional, if used for network connect
