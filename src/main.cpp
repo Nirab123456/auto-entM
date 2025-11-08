@@ -46,28 +46,9 @@ void setup()
     Serial.begin(115200);
     delay(200);
 
-    std::span<uint32_t> i2s_span(I2S_WORD_SLOTS, I2S_WORD_SLOTS_LEN);
-    std::span<uint32_t> ring_span = make_ring_flat_span();
-    audio_rs_instance.set_i2s_buffer(i2s_span);
-    audio_rs_instance.set_ring_payload_flat(ring_span, FRAMES_PER_PACKET);
 
-    audio_rs_instance.set_consumer_ready(g_consumer_ready);
-    audio_rs_instance.set_ring_head(g_ring_head);
-    audio_rs_instance.set_ring_tail(g_ring_tail);
-    audio_rs_instance.set_abs_idx(g_abs_idx);
-    audio_rs_instance.set_sequence_counter(g_sequence_counter);
-
-    audio_rs_instance.set_ring_metadata_spans(ring_frames_span, ring_first_index_span, ring_ts_us_span);
-
-    audio_rs_instance.set_micfg(miccfg);
-
+    WiFi.begin();    
     recivercfg.begin();
-
-    audio_rs_instance.set_reciver_config_ptr(&recivercfg);
-
-    static WiFiClient WiFi_client;
-
-    WiFi.begin(WIFI_SSID, WiFi_PASS);
     unsigned long started = millis();
     const unsigned long timeout_ms = 10000;
     while (
@@ -83,6 +64,36 @@ void setup()
     } else {
         Serial.println("WiFi not connected (continuing — network tasks will retry)");
     }
+
+    //make shared atomic (night task and test of audio reciver)
+    g_consumer_ready = make_shared_atomic_bool(false);
+    g_ring_head = make_shared_atomic_size_t(0);
+    g_ring_tail = make_shared_atomic_size_t(0);
+    g_abs_idx = make_shared_atomic_uint64_t(0);
+    g_sequence_counter = make_shared_atomic_uint32_t(0);
+
+
+    std::span<uint32_t> i2s_span(I2S_WORD_SLOTS, I2S_WORD_SLOTS_LEN);
+    std::span<uint32_t> ring_span = make_ring_flat_span();
+    audio_rs_instance.set_i2s_buffer(i2s_span);
+    audio_rs_instance.set_ring_payload_flat(ring_span, FRAMES_PER_PACKET);
+
+    audio_rs_instance.set_consumer_ready(g_consumer_ready);
+    audio_rs_instance.set_ring_head(g_ring_head);
+    audio_rs_instance.set_ring_tail(g_ring_tail);
+    audio_rs_instance.set_abs_idx(g_abs_idx);
+    audio_rs_instance.set_sequence_counter(g_sequence_counter);
+
+    audio_rs_instance.set_ring_metadata_spans(ring_frames_span, ring_first_index_span, ring_ts_us_span);
+
+    user_mic_config_setter(miccfg);
+    audio_rs_instance.set_micfg(miccfg);
+
+ 
+    audio_rs_instance.set_reciver_config_ptr(&recivercfg);
+
+    static WiFiClient WiFi_client;
+
 
     if (!audio_rs_instance.initI2S())
     {

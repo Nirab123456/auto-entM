@@ -5,6 +5,7 @@
 #include "a_c_s.h"
 #include <WiFi.h>
 #include <algorithm> 
+#include <WiFiManager.h>
 
 inline constexpr uint16_t CONNECTION_RETRY_INTERVAL_MS = 200;
 
@@ -26,8 +27,11 @@ class ReciverConfig {
         unsigned short port();
         bool isValid();
         void begin();
+        void begin(bool f);
         bool ConnectTOReciverIP(WiFiClient* WiFi_TCPClient);
         bool TCPWriteAll(WiFiClient* client, const uint8_t* data, size_t len,
                         uint32_t timeout_ms = 2000, int max_retries = 3,
                         size_t chunk_size = 1400);
+        void clearAndPortal();
+        void forcePortalNow();
 };
