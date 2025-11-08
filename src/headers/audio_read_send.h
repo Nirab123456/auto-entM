@@ -35,6 +35,12 @@ class AUDIO_RS
         std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
         std::shared_ptr<std::atomic<uint32_t>>      sequence_counter_{nullptr};
         std::shared_ptr<std::atomic<uint8_t>>       CHANNEL_COUNT_{nullptr};
+        std::atomic<uint32_t> connection_failure_{0};
+
+        uint16_t conn_retry_base_ms_ = 2000;
+        uint16_t conn_retry_max_ms_ = 30000;
+
+
 
         // overrun policy & stats
         OverRunPolicy  overrun_policy_ = OverRunPolicy::DROP_NEWEST;

@@ -110,15 +110,36 @@ void AUDIO_RS::NetworkTaskLoop()
 
     for (;;)
     {
+        if (stopping_.load(std::memory_order_acquire))
+        {
+            break;
+        }
+
+        size_t tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
+        size_t head = ring_head_sp_ ? ring_head_sp_->load(std::memory_order_acquire) : 0;
+
         bool have_cfg = (recfg_ptr_ && recfg_ptr_->isValid());
         bool connected = (WiFi_tcp_client_ptr_ && WiFi_tcp_client_ptr_->connected());
         unsigned long now = millis();
 
         if (!connected)
         {
+            if (head == tail)
+            {
+                vTaskDelay(pdMS_TO_TICKS(50));
+                continue;
+            }
+            
             if (have_cfg && WiFi.isConnected())
             {
-                if ((now - last_conn_attempt) >= CONNECTION_RETRY_INTERVAL_MS)
+                uint32_t fails = connection_failure_.load(std::memory_order_relaxed);
+                uint64_t attempt_delay = (uint64_t) conn_retry_base_ms_ << std:: min<uint32_t> (fails, 6u);
+                if (attempt_delay > conn_retry_max_ms_)
+                {
+                    attempt_delay = conn_retry_max_ms_;
+                }
+                
+                if ((now - last_conn_attempt) >= static_cast<unsigned long>(attempt_delay))
                 {
                     last_conn_attempt = now;
                     if (consumer_ready_sp_)
@@ -139,10 +160,13 @@ void AUDIO_RS::NetworkTaskLoop()
 
                     if (ok)
                     {
-                        if (consumer_ready_sp_)
+                        connection_failure_.store(0,std::memory_order_relaxed);
+
+                        if (network_writer_handle_)
                         {
-                            consumer_ready_sp_->store(true, std::memory_order_release);
+                            xTaskNotifyGive(network_writer_handle_);
                         }
+                        Serial.println("NetworkTaskLoop: connected to receiver (waking writer)");
                     }
                     else
                     {
@@ -156,20 +180,15 @@ void AUDIO_RS::NetworkTaskLoop()
             
         }
 
-        if (!have_cfg && !WiFi.isConnected())
-        {
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
-
-        
-        size_t tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
-        size_t head = ring_head_sp_ ? ring_head_sp_->load(std::memory_order_acquire) : 0;
-        if (tail ==head)
+        tail = ring_tail_sp_ ? ring_tail_sp_->load(std::memory_order_acquire) : 0;
+        head = ring_head_sp_ ? ring_head_sp_->load(std::memory_order_acquire) : 0;
+        if (tail == head)
         {
             vTaskDelay(pdMS_TO_TICKS(2));
             continue;
         }
+        
+
         size_t slot = tail & (ring_slots -1);
 
         if (ring_frames_span_.size() != ring_slots)
@@ -196,7 +215,7 @@ void AUDIO_RS::NetworkTaskLoop()
             size_t s = slot;
             if (xQueueSend(network_slot_queue_, &s, 0) != pdTRUE)
             {
-                //queue full
+                vTaskDelay(pdMS_TO_TICKS(1));
             }
             else
             {
@@ -207,6 +226,7 @@ void AUDIO_RS::NetworkTaskLoop()
         }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
+    vTaskDelete(nullptr);
 }
 
 void AUDIO_RS::NetworkDataWriterLoop()
@@ -350,10 +370,19 @@ void AUDIO_RS::NetworkDataWriterLoop()
                 consumer_ready_sp_->store(false, std::memory_order_release);
             }
             Ring_clear_Rst();
+            connection_failure_.fetch_add(1,std::memory_order_relaxed);            
             xQueueSendToBack(network_slot_queue_, &slot, 0);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
+
+        connection_failure_.store(0,std::memory_order_relaxed);
+        if (consumer_ready_sp_ && consumer_ready_sp_->load(std::memory_order_acquire))
+        {
+            consumer_ready_sp_->store(true, std::memory_order_release);
+            Serial.println("NetworkDataWriterLoop: consumer_ready set true after successful write");
+        }
+
         
         if (ring_tail_sp_)
         {
@@ -362,7 +391,7 @@ void AUDIO_RS::NetworkDataWriterLoop()
         }
         taskYIELD();
     }
-    
+    vTaskDelete(nullptr);
 }
 
 void AUDIO_RS::WriteTCPHeader(
