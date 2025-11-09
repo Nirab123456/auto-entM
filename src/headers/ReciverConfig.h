@@ -13,10 +13,10 @@ class ReciverConfig {
     private:
         const char* prefs_namespace_;
         uint8_t prefs_rst_open_portal_pin_ = 0xff;
-        TickType_t debounce_ticks = pdMS_TO_TICKS(20);
-        uint32_t hold_ms = 800;
+        TickType_t debounce_ticks_ = pdMS_TO_TICKS(20);
+        uint32_t hold_ms_ = 800;
         static void IRAM_ATTR confButtonIsrHandle();
-        static void ConfButtonTaskLoop();
+        void ConfButtonTaskLoop();
 
         std::function<void()> startConfigPortalCb_;
         std::atomic<bool> stopping_{false};

@@ -1,5 +1,102 @@
 #include "headers/ReciverConfig.h"
 
+
+//ISR
+void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
+{
+    BaseType_t woken = pdFALSE;
+    if (button_task_handle_)
+    {
+        vTaskNotifyGiveFromISR(button_task_handle_, &woken);
+        if (woken == pdTRUE)
+        {
+            portYIELD_FROM_ISR();
+        }   
+    }   
+}
+
+void ReciverConfig::ConfRstButtonTrampoline(void* pv)
+{
+    ReciverConfig* self = static_cast<ReciverConfig*>(pv);
+    if (!self)
+    {
+        vTaskDelete(nullptr);
+        return;
+    }
+    self->ConfButtonTaskLoop();
+}
+
+void ReciverConfig::ConfButtonTaskLoop()
+{
+    TickType_t press_ticks = 0;
+    TickType_t last_edge_tick = 0;
+    uint8_t pin = prefs_rst_open_portal_pin_;
+    const TickType_t debounce_ticks = debounce_ticks_;
+    uint32_t hold_ms = hold_ms_;
+
+    for (;;)
+    {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (stopping_.load(std::memory_order_acquire))
+        {
+            break;
+        }
+        TickType_t now = xTaskGetTickCount();
+
+        if ((now - last_edge_tick) < debounce_ticks)
+        {
+            last_edge_tick = now;
+            continue;
+        }
+        
+        last_edge_tick = now;
+        int level = digitalRead(pin);
+        if (level == LOW)
+        {
+            if (press_ticks == 0)
+            {
+                press_ticks = now;
+            }
+            continue;
+        }
+        else
+        {
+            if (press_ticks == 0)
+            {
+                continue;
+            }
+            TickType_t dur_ms = now - press_ticks;
+            press_ticks = 0;
+
+            if (dur_ms >= hold_ms)
+            {
+                Serial.print("ReciverConfig::ConfButtonTaskLoopp::Press Duration : ");
+                Serial.println((unsigned)dur_ms);
+
+                ClearPrefs();
+
+                if (startConfigPortalCb_)
+                {
+                    startConfigPortalCb_();
+                }
+                else
+                {
+                    Serial.println("ReciverConfig: startConfigPortalCallback not set");
+                }
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
+            else
+            {
+                Serial.printf("ReciverConfig: short press (~%u ms) — ignored\n", (unsigned)dur_ms);
+            }
+        } 
+    }
+    StopAndClean();
+    vTaskDelete(nullptr);
+
+}
+
+
 bool ReciverConfig::AttachResetButton(
     uint8_t pin,
     TickType_t debounce_ms,
@@ -59,6 +156,46 @@ void ReciverConfig::ClearPrefs()
     prefs_.end();
     prefs_.begin(prefs_namespace_,false);
     Serial.println("ReciverConfig::ClearPrefs::Preferances cleared");
+}
+
+void ReciverConfig::DetachResetButton(TickType_t wait_ms)
+{
+    stopping_.store(true,std::memory_order_release);
+    if (prefs_rst_open_portal_pin_ != 0xff)
+    {
+        detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
+    }
+    if (button_task_handle_)
+    {
+        xTaskNotifyGive(button_task_handle_);
+        const TickType_t start = xTaskGetTickCount();
+        const TickType_t wait_ticks = wait_ms;
+        while (wait_ms != portMAX_DELAY && (xTaskGetTickCount() - start) < wait_ticks)
+        {
+            if (eTaskGetState(button_task_handle_) == eDeleted)
+            {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        button_task_handle_ = nullptr;
+        if (audio_rs_class_ptr_->conf_portal_rst_button_handler_)
+        {
+            audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
+        }
+    }
+    stopping_.store(false,std::memory_order_release);
+}
+
+void ReciverConfig::StopAndClean()
+{
+    if (prefs_rst_open_portal_pin_ != 0xff)
+    {
+        detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
+    }
+    prefs_rst_open_portal_pin_ = 0xff;
+    Serial.println("ReciverConfig::StopAndClean: buttonTaskLoop exiting and cleaned up");
+    
 }
 
 
