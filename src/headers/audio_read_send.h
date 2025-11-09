@@ -123,6 +123,7 @@ class AUDIO_RS
         TaskHandle_t network_handle_ = nullptr;
         TaskHandle_t network_writer_handle_ = nullptr;
         TaskHandle_t monitor_handle_ = nullptr;
+        TaskHandle_t conf_portal_rst_button_handler_ = nullptr;
         
         AUDIO_RS() = default;
 

@@ -1,9 +1,8 @@
 #pragma once
-#include <Arduino.h>
+#include "audio_read_send.h"
 #include <Preferences.h>
 #include <mutex>
 #include "a_c_s.h"
-#include <WiFi.h>
 #include <algorithm> 
 #include <WiFiManager.h>
 
@@ -12,13 +11,32 @@ inline constexpr uint16_t CONNECTION_RETRY_INTERVAL_MS = 200;
 
 class ReciverConfig {
     private:
+        const char* prefs_namespace_;
+        uint8_t prefs_rst_open_portal_pin_ = 0xff;
+        TickType_t debounce_ticks = pdMS_TO_TICKS(20);
+        uint32_t hold_ms = 800;
+        static void IRAM_ATTR confButtonIsrHandle();
+        static void ConfButtonTaskLoop();
+
+        std::function<void()> startConfigPortalCb_;
+        std::atomic<bool> stopping_{false};
+
+        void StopAndClean();
+
         Preferences prefs_;
         std::mutex mu_;
         IPAddress ip_{0,0,0,0};
         uint16_t port_{0};
+
+        AUDIO_RS*   audio_rs_class_ptr_{nullptr};
+
+        ReciverConfig(const ReciverConfig&) = delete;
+        ReciverConfig& operator = (const ReciverConfig&) = delete;
     public:
-        ReciverConfig() = default;
-        ~ReciverConfig() = default;
+        ReciverConfig(const char* prefs_namespace = "config");
+        ~ReciverConfig();
+        static TaskHandle_t button_task_handle_;
+
         void load();
         void save(const char* ip_str, uint16_t port);
         void clear();
@@ -32,6 +50,27 @@ class ReciverConfig {
         bool TCPWriteAll(WiFiClient* client, const uint8_t* data, size_t len,
                         uint32_t timeout_ms = 2000, int max_retries = 3,
                         size_t chunk_size = 1400);
-        void clearAndPortal();
-        void forcePortalNow();
+        
+        bool AttachResetButton(
+            uint8_t button_pin,
+            TickType_t debounce_ms = 20,
+            uint32_t hold_ms = 800,
+            UBaseType_t task_prio = 1,
+            uint32_t task_stack_bytes = 3072,
+            BaseType_t core = -99,
+            void* arg = nullptr
+        );
+        
+        void setStartConfPortalCallback(std::function<void()> cb);
+
+        void ClearPrefs();
+
+        void DetachResetButton(TickType_t wait_ms = pdMS_TO_TICKS(500));
+
+        static void ConfRstButtonTrampoline(void* pv);
+
+        void setAudioRsPtr(AUDIO_RS* p);
+
+        std::function<bool(/*if needed set parameters*/)> start_task_fn_ptr{nullptr};
+
 };
