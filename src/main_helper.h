@@ -13,7 +13,7 @@ constexpr size_t RING_SIZE = 64;
 static_assert((RING_SIZE & (RING_SIZE - 1)) == 0, "Ring size should be power of 2");
 constexpr size_t I2S_WORD_SLOTS_LEN = FRAMES_PER_PACKET * 2;
 constexpr size_t RING_FLAT_LEN = RING_SIZE * FRAMES_PER_PACKET;
-
+constexpr uint8_t RESET_WIFI_BUTTON_PIN = 10;
 static uint32_t I2S_WORD_SLOTS[I2S_WORD_SLOTS_LEN];
 static uint32_t RING_PAYLOAD[RING_SIZE][FRAMES_PER_PACKET];
 
