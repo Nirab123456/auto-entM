@@ -1,7 +1,7 @@
 #include "headers/ReciverConfig.h"
 
 
-TaskHandle_t ReciverConfig::button_task_handle_ = nullptr;
+TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 
 ReciverConfig::ReciverConfig(const char* prefs_namespace)
     :prefs_namespace_(prefs_namespace)

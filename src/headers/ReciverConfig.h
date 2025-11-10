@@ -35,7 +35,7 @@ class ReciverConfig {
     public:
         ReciverConfig(const char* prefs_namespace = "config");
         ~ReciverConfig();
-        static TaskHandle_t button_task_handle_;
+        static TaskHandle_t ConfSRButtonTaskHandle_;
 
         void load();
         void save(const char* ip_str, uint16_t port);

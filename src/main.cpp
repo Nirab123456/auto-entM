@@ -62,25 +62,29 @@ void setup()
 
     user_mic_config_setter(miccfg);
     audio_rs_instance.set_micfg(miccfg);
-    recivercfg.setAudioRsPtr(&audio_rs_instance);
-    recivercfg.setStartConfPortalCallback([&](){
-        audio_rs_instance.start_task(
-            "ConfButtonTaskLoop",
-            3072,
-            1,
-            -99,
-            recivercfg.ConfRstButtonTrampoline,
-            &recivercfg,
-            &recivercfg.button_task_handle_  
-        );
-    }
-    );
-    if (recivercfg.button_task_handle_)
-    {
-        audio_rs_instance.conf_portal_rst_button_handler_ = recivercfg.button_task_handle_;
-    }
-    recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN, 20, 800, 3, 3072, 1, nullptr);
 
+
+    recivercfg.setAudioRsPtr(&audio_rs_instance);
+    recivercfg.StartConfigPortal();
+    bool attach_ok = recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN, 20, 800, 3, 3072, -99, nullptr);
+    if (!attach_ok)
+    {
+        Serial.println("main -> ReciverConfig::AttachResetButton:Failed");
+    }
+    else
+    {
+        if (ReciverConfig::ConfSRButtonTaskHandle_)
+        {
+            /* code */
+        }
+        if (recivercfg.ConfSRButtonTaskHandle_)
+        {
+            /* code */
+        }
+        
+    }
+    
+    
     audio_rs_instance.set_reciver_config_ptr(&recivercfg);
 
     static WiFiClient WiFi_client;

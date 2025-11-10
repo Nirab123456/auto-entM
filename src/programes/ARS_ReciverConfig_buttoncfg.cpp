@@ -5,9 +5,9 @@
 void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
 {
     BaseType_t woken = pdFALSE;
-    if (button_task_handle_)
+    if (ConfSRButtonTaskHandle_)
     {
-        vTaskNotifyGiveFromISR(button_task_handle_, &woken);
+        vTaskNotifyGiveFromISR(ConfSRButtonTaskHandle_, &woken);
         if (woken == pdTRUE)
         {
             portYIELD_FROM_ISR();
@@ -164,7 +164,7 @@ bool ReciverConfig::AttachResetButton(
         return false;
     }
     prefs_rst_open_portal_pin_ = pin; 
-    if (button_task_handle_ == nullptr)
+    if (ConfSRButtonTaskHandle_ == nullptr)
     {
         BaseType_t ok = pdFAIL;
         if (!audio_rs_class_ptr_)
@@ -180,17 +180,17 @@ bool ReciverConfig::AttachResetButton(
                 core,
                 ConfRstButtonTrampoline,
                 arg,
-                &button_task_handle_  
+                &ConfSRButtonTaskHandle_  
             );
         }
-        if (ok != pdPASS || button_task_handle_ == nullptr)
+        if (ok != pdPASS || ConfSRButtonTaskHandle_ == nullptr)
         {
             Serial.println("ReciverConfig::AttachResetButton -> ConfButtonTaskLoop::Failed creation");
-            button_task_handle_ = nullptr;
+            ConfSRButtonTaskHandle_ = nullptr;
             audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
             return false;
         }
-        audio_rs_class_ptr_->conf_portal_rst_button_handler_ = button_task_handle_;
+        audio_rs_class_ptr_->conf_portal_rst_button_handler_ = ConfSRButtonTaskHandle_;
     }
     pinMode(prefs_rst_open_portal_pin_, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_), ReciverConfig::confButtonIsrHandle, CHANGE);
@@ -216,20 +216,20 @@ void ReciverConfig::DetachResetButton(TickType_t wait_ms)
     {
         detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
     }
-    if (button_task_handle_)
+    if (ConfSRButtonTaskHandle_)
     {
-        xTaskNotifyGive(button_task_handle_);
+        xTaskNotifyGive(ConfSRButtonTaskHandle_);
         const TickType_t start = xTaskGetTickCount();
         const TickType_t wait_ticks = wait_ms;
         while (wait_ms != portMAX_DELAY && (xTaskGetTickCount() - start) < wait_ticks)
         {
-            if (eTaskGetState(button_task_handle_) == eDeleted)
+            if (eTaskGetState(ConfSRButtonTaskHandle_) == eDeleted)
             {
                 break;
             }
             vTaskDelay(pdMS_TO_TICKS(10));
         }
-        button_task_handle_ = nullptr;
+        ConfSRButtonTaskHandle_ = nullptr;
         if (audio_rs_class_ptr_->conf_portal_rst_button_handler_)
         {
             audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
