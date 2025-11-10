@@ -111,6 +111,43 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
     }
 }
 
+void ReciverConfig::save(const char* ip_str, uint16_t port)
+{
+    std::lock_guard<std::mutex> lock(mu_);
+    if (prefs_.begin(prefs_namespace_, false))
+    {
+        Serial.println("ReciverConfig::save::prefs.begin() failed!");
+        return;
+    }
+    
+
+    if (ip_str && ip_str[0])
+    {
+        IPAddress tmp;
+        if (tmp.fromString(String(ip_str)))
+        {
+            ip_ = tmp;
+        }
+        else
+        {
+            ip_ = IPAddress(0,0,0,0);
+            prefs_.remove(PREFS_IP_ID);
+        }
+    }
+    if (ip_ != IPAddress(0,0,0,0))
+    {
+        prefs_.putString(PREFS_IP_ID, String(ip_));
+    }
+    if (port > 0 && port <= 65535)
+    {
+        port_ = port;
+        prefs_.putUShort(PREFS_PORT_ID, port_);
+    }
+    
+   prefs_.end(); 
+    
+}
+
 void ReciverConfig::clear()
 {
     std::lock_guard<std::mutex> lock(mu_);
