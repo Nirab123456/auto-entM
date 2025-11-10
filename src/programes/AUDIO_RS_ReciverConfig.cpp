@@ -38,67 +38,7 @@ void ReciverConfig::begin()
     // Prepare placeholders with previously-saved values (if any)
     char ip_buffer[40] = {0};
     char port_buffer[16] = {0};
-    {
-        std::lock_guard<std::mutex> lock(mu_);
-        if (ip_ != IPAddress(0,0,0,0)) {
-            ip_.toString().toCharArray(ip_buffer, sizeof(ip_buffer));
-        }
-        if (port_ != 0) {
-            snprintf(port_buffer, sizeof(port_buffer), "%u", (unsigned)port_);
-        }
-    }
-
-    // Create WiFiManager and add two custom parameters
-    WiFiManager wm;
-    // optional: set timeout for portal (0 = wait forever)
-    // wm.setTimeout(180); // seconds — uncomment if you want timed portal
-
-    WiFiManagerParameter ip_param("pc_ip", "Receiver PC IP", ip_buffer, sizeof(ip_buffer));
-    WiFiManagerParameter port_param("pc_port", "Receiver PC port", port_buffer, sizeof(port_buffer));
-
-    wm.addParameter(&ip_param);
-    wm.addParameter(&port_param);
-
-    // Start the portal (this will block until success or cancel)
-    // IMPORTANT: autoConnect will try to connect to known WiFi first,
-    // otherwise it starts AP and portal for user to fill credentials + parameters.
-    bool connected = wm.autoConnect();
-
-    if (!connected) {
-        Serial.println("ReciverConfig::begin() - WiFiManager autoConnect failed or was cancelled");
-        // keep object in not-configured state; caller can retry begin later
-        return;
-    }
-
-    // At this point we have WiFi connected (either to prior network or newly-configured).
-    // Read values entered into portal parameters
-    const char* entered_ip = ip_param.getValue();
-    const char* entered_port = port_param.getValue();
-
-    // Validate and save if valid, otherwise clear saved config
-    if (entered_ip && entered_ip[0]) {
-        IPAddress tmp;
-        if (tmp.fromString(String(entered_ip))) {
-            unsigned p = 0;
-            if (entered_port && entered_port[0]) {
-                p = (unsigned)atoi(entered_port);
-            }
-            if (p > 0 && p <= 65535) {
-                // Save validated values
-                save(entered_ip, static_cast<uint16_t>(p));
-                Serial.printf("ReciverConfig::begin() - saved receiver IP=%s PORT=%u\n", entered_ip, (unsigned)p);
-            } else {
-                // ip okay but port invalid — save ip with port 0 (you may prefer to reject)
-                Serial.printf("ReciverConfig::begin() - invalid port entered (%s) — saving IP only\n", entered_port ? entered_port : "(null)");
-                save(entered_ip, 0);
-            }
-        } else {
-            Serial.printf("ReciverConfig::begin() - invalid IP entered (%s) - clearing config\n", entered_ip);
-            clear();
-        }
-    } else {
-        Serial.println("ReciverConfig::begin() - no IP entered in portal");
-    }
+    GSVIpPort(ip_buffer, port_buffer, false);
 
     // optionally: give small delay to ensure WiFi connected and preferences flushed
     vTaskDelay(pdMS_TO_TICKS(50));
