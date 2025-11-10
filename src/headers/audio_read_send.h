@@ -141,6 +141,12 @@ class AUDIO_RS
         void Ring_clear_Rst();
         void NetworkDataWriterLoop();
 
+        void PauseNetworkStreaming();
+        bool ReqNetworkReconnect();
+        void set_consumer_ready_flag(bool v);
+        std::shared_ptr<std::atomic<bool>>Get_Consumer_Ready_ptr() const;
+        bool Has_Consumer_Ready() const;
+
         // -----------------------
         // basic setters for atomics & buffers
         // -----------------------

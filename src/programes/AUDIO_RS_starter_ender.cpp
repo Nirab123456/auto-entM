@@ -276,3 +276,60 @@ void AUDIO_RS::set_sequence_counter(std::shared_ptr<std::atomic<uint32_t>> seq)
 {
     sequence_counter_ = seq;
 }
+
+
+void AUDIO_RS::PauseNetworkStreaming()
+{
+    if (consumer_ready_sp_)
+    {
+        consumer_ready_sp_->store(false, std::memory_order_release);
+    }
+    if (WiFi_tcp_client_ptr_)
+    {
+        if (WiFi_tcp_client_ptr_->connected())
+        {
+            WiFi_tcp_client_ptr_->stop();
+        }
+    }
+    Serial.println("AUDIO_RS::PauseNetworkStreaming: consumer_ready cleared and tcp client stopped");    
+}
+
+bool AUDIO_RS::ReqNetworkReconnect()
+{
+    if (!WiFi_tcp_client_ptr_) {
+        Serial.println("AUDIO_RS::ReqNetworkReconnect: no WiFiClient configured");
+        return false;
+    }
+    if (!recfg_ptr_) {
+        Serial.println("AUDIO_RS::ReqNetworkReconnect: no ReciverConfig pointer set");
+        return false;
+    }
+
+    bool ok = recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_);
+    if (ok)
+    {
+        Serial.println("AUDIO_RS::ReqNetworkReconnect:Reconnect successfull");
+        if (consumer_ready_sp_)
+        {
+            consumer_ready_sp_->store(true,std::memory_order_release);
+        }
+        return true;
+    }
+    else
+    {
+        Serial.println("AUDIO_RS::request_network_reconnect: reconnect failed");
+        return false;
+    }
+}
+
+void AUDIO_RS::set_consumer_ready_flag(bool v)
+{
+    if (consumer_ready_sp_)
+    {
+        consumer_ready_sp_->store(v,std::memory_order_release);
+    }
+    else
+    {
+        consumer_ready_sp_ = std::make_shared<std::atomic<bool>>(v);
+    }
+}

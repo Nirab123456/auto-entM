@@ -15,6 +15,57 @@ void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
     }   
 }
 
+bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_password)
+{
+    Serial.println("ReciverConfig::startConfigPortal: preparing to start portal");
+    bool was_paused = false;
+
+    if (audio_rs_class_ptr_)
+    {
+        Serial.println("ReciverConfig::StartConfigPortal->PauseNetworkStreaming:Pausing audio");
+        audio_rs_class_ptr_->PauseNetworkStreaming();
+    }
+    
+    WiFiManager wm;
+
+    bool ok;
+    if (!ap_ssid || strlen(ap_ssid) == 0)
+    {
+        ok = wm.startConfigPortal();
+    }
+    else
+    {
+        if (!ap_password || strlen(ap_password) == 0)
+        {
+            wm.startConfigPortal(ap_ssid);
+        }
+        else
+        {
+            ok = wm.startConfigPortal(ap_ssid, ap_password);
+        }
+    }
+    
+    if (ok) {
+        Serial.println("ReciverConfig::startConfigPortal: portal returned success (credentials acquired or already connected)");
+    } else {
+        Serial.println("ReciverConfig::startConfigPortal: portal failed or timed out");
+    }
+    
+    if (audio_rs_class_ptr_)
+    {
+        bool reconnect_ok = audio_rs_class_ptr_ ->ReqNetworkReconnect();
+        Serial.printf("ReciverConfig::AUDIO_RS -> ReqNetworkReconnect:Returned %d\n", reconnect_ok ? 1 : 0);
+
+        if (reconnect_ok)
+        {
+            audio_rs_class_ptr_ ->set_consumer_ready_flag(true);
+        }
+        
+
+    }
+    return ok;
+}
+
 void ReciverConfig::ConfRstButtonTrampoline(void* pv)
 {
     ReciverConfig* self = static_cast<ReciverConfig*>(pv);
