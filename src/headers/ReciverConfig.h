@@ -68,6 +68,7 @@ class ReciverConfig {
         void DetachResetButton(TickType_t wait_ms = pdMS_TO_TICKS(500));
 
         static void ConfRstButtonTrampoline(void* pv);
+        static void StartConfPortalTrampoline(void* pv);
 
         void setAudioRsPtr(AUDIO_RS* p);
         bool StartConfigPortal(const char* ap_ssid = DEFAULT_AP_NAME, const char* ap_password = Default_AP_PASS);

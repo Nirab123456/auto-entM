@@ -254,3 +254,14 @@ void ReciverConfig::setStartConfPortalCallback(std::function<void()>cb)
 {
     startConfigPortalCb_ = std::move(cb);
 }
+
+void ReciverConfig::StartConfPortalTrampoline(void* pv)
+{
+    ReciverConfig* self = static_cast<ReciverConfig*>(pv);
+    if (!self)
+    {
+        vTaskDelete(nullptr);
+        return;
+    }
+    self -> StartConfigPortal();
+}
