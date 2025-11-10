@@ -79,7 +79,11 @@ class ReciverConfig {
         static void StartConfPortalTrampoline(void* pv);
 
         void setAudioRsPtr(AUDIO_RS* p);
-        bool StartConfigPortal(const char* ap_ssid = DEFAULT_AP_NAME, const char* ap_password = Default_AP_PASS);
+        bool StartConfigPortal(
+            bool force_start_conf_portal = false,
+            const char* ap_ssid = DEFAULT_AP_NAME, 
+            const char* ap_password = Default_AP_PASS
+        );
 
         std::function<bool(/*if needed set parameters*/)> start_task_fn_ptr{nullptr};
 

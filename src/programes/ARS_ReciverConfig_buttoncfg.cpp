@@ -135,7 +135,7 @@ bool ReciverConfig::GSVIpPort(
     return true;
 }
 
-bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_password)
+bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* ap_ssid, const char* ap_password)
 {
     Serial.println("ReciverConfig::startConfigPortal: preparing to start portal");
     bool was_paused = false;
@@ -150,7 +150,14 @@ bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_passwo
     char ip_buffer[DEFAULT_IP_BUFFER_SIZE] = {0};
     char port_buffer[DEFAULT_PORT_BUFFER_SIZE] = {0};
 
-    GSVIpPort(ip_buffer, port_buffer, true,ap_ssid,ap_password, DEFAULT_IP_BUFFER_SIZE, DEFAULT_PORT_BUFFER_SIZE);
+    GSVIpPort(
+        ip_buffer, 
+        port_buffer, 
+        force_start_conf_portal, 
+        ap_ssid,ap_password, 
+        DEFAULT_IP_BUFFER_SIZE, 
+        DEFAULT_PORT_BUFFER_SIZE
+    );
     
 
     {

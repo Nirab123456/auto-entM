@@ -18,10 +18,17 @@ MicrophoneConfig miccfg;
 
 void setup()
 {
+    bool wifiok = false;
+    bool reconok = false;
+
     Serial.begin(115200);
     delay(200);
     Serial.println("Starting up...");
-    WiFi.begin();
+
+    wifiok = WiFi.begin();
+    static WiFiClient WiFi_client;
+    audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
+
     recivercfg.begin();
     unsigned long started = millis();
     const unsigned long timeout_ms = 10000;
@@ -65,7 +72,22 @@ void setup()
 
 
     recivercfg.setAudioRsPtr(&audio_rs_instance);
-    recivercfg.StartConfigPortal();
+    if (wifiok)
+    {
+        audio_rs_instance.set_reciver_config_ptr(&recivercfg);
+        reconok = audio_rs_instance.ReqNetworkReconnect();
+    }
+    
+    if (reconok)
+    {
+        recivercfg.StartConfigPortal();
+    }
+    else
+    {
+        recivercfg.StartConfigPortal(true);
+    }
+    
+    
     bool attach_ok = recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN, 20, 800, 3, 3072, -99, nullptr);
     if (!attach_ok)
     {
@@ -82,8 +104,6 @@ void setup()
     
     audio_rs_instance.set_reciver_config_ptr(&recivercfg);
 
-    static WiFiClient WiFi_client;
-    audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
 
     if (!audio_rs_instance.initI2S())
     {
