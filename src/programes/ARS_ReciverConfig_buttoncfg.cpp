@@ -37,18 +37,9 @@ bool ReciverConfig::GSVIpPort(
         {
             saved_ip.toCharArray(ip_buffer, ip_buffer_len);
         }
-        else
-        {
-            return false;
-        }
-        
         if (saved_port.length() > 0)
         {
             saved_port.toCharArray(port_buffer, port_buffer_len);
-        }
-        else
-        {
-            return false;
         }
     }
 
@@ -117,29 +108,30 @@ bool ReciverConfig::GSVIpPort(
             }
             if (p > 0 && p <= 655535)
             {
-                save(entered_ip, static_cast<uint16_t> (p));
+                save(entered_ip, static_cast<uint16_t> (p)); // new ip and port
                 Serial.printf("ReciverConfig::StartConfigPortal - saved receiver IP=%s PORT=%u\n", entered_ip, (unsigned)p);
-                {
-                    std::lock_guard<std::mutex> lock(mu_);
-                    ip_ = entered_ip;
-                    port_ = static_cast<uint16_t> (p);
-                }
             }
             else
             {
+                p = NULL;
                 //best effort - have to fix ReciverConfig::save to save  even 1 keepin other same as previous
-
-            }
-            
-            
-
-            
+                save(entered_ip, p); // keep previous port new ip 
+            }   
         }
-        
+    }
+    else if (entered_port && entered_port[0])
+    {
+        unsigned p = 0;
+        p = (unsigned)atoi(entered_port);
+        if (p > 0 && p<= 655535)
+        {
+            entered_ip = nullptr;
+            save(entered_ip, static_cast<uint16_t>(p)); // new port
+        }
+    }else {
+        Serial.println("ReciverConfig::StartConfigPortal:: Both IP and Port missing");
     }
     
-    
-
 }
 
 bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_password)

@@ -135,15 +135,38 @@ void ReciverConfig::load()
 //have to fix 
 void ReciverConfig::save(const char* ip_str, uint16_t port) 
 {
-    std::lock_guard<std::mutex> lock(mu_);
-    prefs_.begin(prefs_namespace_,false);
-    prefs_.putString("pc_ip", String(ip_str));
-    prefs_.putString("pc_port", String((unsigned)port));
-    prefs_.end();
-    IPAddress tmp;
-    if (ip_str && ip_str[0] && tmp.fromString(String(ip_str)))
+    if (ip_str != nullptr && port != NULL)
     {
-        ip_ = tmp;
+        std::lock_guard<std::mutex> lock(mu_);
+        prefs_.begin(prefs_namespace_,false);
+        prefs_.putString("pc_ip", String(ip_str));
+        prefs_.putString("pc_port", String((unsigned)port));
+        prefs_.end();
+        IPAddress tmp;
+        if (ip_str && ip_str[0] && tmp.fromString(String(ip_str)))
+        {
+            ip_ = tmp;
+            port_ = port;
+        }
+    }
+    else if (port == NULL)
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        prefs_.begin(prefs_namespace_,false);
+        prefs_.putString("pc_ip", String(ip_str));
+        prefs_.end();
+        IPAddress tmp;
+        if (ip_str && ip_str[0] && tmp.fromString(String(ip_str)))
+        {
+            ip_ = tmp;
+        }
+    }
+    else if (ip_str == nullptr)
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        prefs_.begin(prefs_namespace_,false);
+        prefs_.putString("pc_port", String((unsigned)port));
+        prefs_.end();
         port_ = port;
     }
 }
