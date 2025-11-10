@@ -15,6 +15,133 @@ void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
     }   
 }
 
+bool ReciverConfig::GSVIpPort(
+    char* ip_buffer,
+    char* port_buffer,
+    bool force_start_conf_portal,
+    const char* ap_ssid,
+    const char* ap_password,
+    uint8_t ip_buffer_len,
+    uint8_t port_buffer_len
+)
+{
+    //take mutex get ip and port
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        prefs_.begin(prefs_namespace_, true);
+        String saved_ip = prefs_.getString(PREFS_IP_ID,"");
+        String saved_port = prefs_.getString(PREFS_PORT_ID,"");
+        prefs_.end();
+
+        if (saved_ip.length() > 0)
+        {
+            saved_ip.toCharArray(ip_buffer, ip_buffer_len);
+        }
+        else
+        {
+            return false;
+        }
+        
+        if (saved_port.length() > 0)
+        {
+            saved_port.toCharArray(port_buffer, port_buffer_len);
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    WiFiManager wm;
+
+    WiFiManagerParameter ip_param(
+        PREFS_IP_ID,
+        PREFS_IP_LABEL,
+        ip_buffer,
+        ip_buffer_len
+    );
+
+    WiFiManagerParameter port_param(
+        PREFS_PORT_ID,
+        PREFS_PORT_LABEL,
+        port_buffer,
+        port_buffer_len
+    );
+
+    wm.addParameter(&ip_param);
+    wm.addParameter(&port_param);
+
+    bool ok = false;
+
+    if (force_start_conf_portal)
+    {
+        if(ap_ssid && strlen(ap_ssid) > 0)
+        {
+            if (ap_password && strlen(ap_password) > 0)
+            {
+                ok = wm.startConfigPortal(ap_ssid, ap_password);
+            }
+            else
+            {
+                ok = wm.startConfigPortal(ap_ssid);
+            }
+        }
+        else
+        {
+            ok = wm.startConfigPortal(/*random name no pass*/);
+        }
+    }
+    else
+    {
+        ok = wm.autoConnect();
+    }
+    
+    if (ok) {
+        Serial.println("ReciverConfig::StartConfigPortal: portal exited (success or user closed)");
+    } else {
+        Serial.println("ReciverConfig::StartConfigPortal: portal failed or timed out");
+    }
+
+    const char* entered_ip = ip_param.getValue();
+    const char* entered_port = port_param.getValue();
+
+    if (entered_ip && entered_ip[0])
+    {
+        IPAddress tmp;
+        if (tmp.fromString(String(entered_ip)))
+        {
+            unsigned p = 0;
+            if (entered_port && entered_port[0])
+            {
+                p = (unsigned)atoi(entered_port);
+            }
+            if (p > 0 && p <= 655535)
+            {
+                save(entered_ip, static_cast<uint16_t> (p));
+                Serial.printf("ReciverConfig::StartConfigPortal - saved receiver IP=%s PORT=%u\n", entered_ip, (unsigned)p);
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    ip_ = entered_ip;
+                    port_ = static_cast<uint16_t> (p);
+                }
+            }
+            else
+            {
+                //best effort - have to fix ReciverConfig::save to save  even 1 keepin other same as previous
+
+            }
+            
+            
+
+            
+        }
+        
+    }
+    
+    
+
+}
+
 bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_password)
 {
     Serial.println("ReciverConfig::startConfigPortal: preparing to start portal");
@@ -26,7 +153,32 @@ bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_passwo
         audio_rs_class_ptr_->PauseNetworkStreaming();
     }
     
+
+    char ip_buffer[DEFAULT_IP_BUFFER_SIZE] = {0};
+    char port_buffer[DEFAULT_PORT_BUFFER_SIZE] = {0};
+
+    GSVIpPort(ip_buffer, port_buffer, true,ap_ssid,ap_password, DEFAULT_IP_BUFFER_SIZE, DEFAULT_PORT_BUFFER_SIZE);
+    
+
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        prefs_.begin(prefs_namespace_,true);
+        String SavedIP = prefs_.getString("pc_ip","");
+        String SavedPort = prefs_.getString("pc_port","");
+        prefs_.end();
+        if (SavedIP.length() > 0)
+        {
+            SavedIP.toCharArray(ip_buffer,sizeof(ip_buffer));
+        }
+        
+        if (SavedPort.length() > 0)
+        {
+            SavedPort.toCharArray(port_buffer,sizeof(port_buffer));
+        }
+    }
+
     WiFiManager wm;
+
 
     bool ok;
     if (!ap_ssid || strlen(ap_ssid) == 0)

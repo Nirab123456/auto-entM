@@ -17,6 +17,15 @@ class ReciverConfig {
         uint32_t hold_ms_ = 800;
         static void IRAM_ATTR confButtonIsrHandle();
         void ConfButtonTaskLoop();
+        bool GSVIpPort(
+            char* ip_buffer,
+            char* port_buffer,
+            bool force_start_conf_portal = false,
+            const char* ap_ssid = nullptr,
+            const char* ap_password = nullptr,
+            uint8_t ip_buffer_len = DEFAULT_IP_BUFFER_SIZE,
+            uint8_t port_buffer_len = DEFAULT_PORT_BUFFER_SIZE
+        );
 
         std::function<void()> startConfigPortalCb_;
         std::atomic<bool> stopping_{false};
@@ -45,7 +54,6 @@ class ReciverConfig {
         unsigned short port();
         bool isValid();
         void begin();
-        void begin(bool f);
         bool ConnectTOReciverIP(WiFiClient* WiFi_TCPClient);
         bool TCPWriteAll(WiFiClient* client, const uint8_t* data, size_t len,
                         uint32_t timeout_ms = 2000, int max_retries = 3,

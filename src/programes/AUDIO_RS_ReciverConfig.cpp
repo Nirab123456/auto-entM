@@ -6,13 +6,10 @@ TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 ReciverConfig::ReciverConfig(const char* prefs_namespace)
     :prefs_namespace_(prefs_namespace)
 {
-    prefs_.begin(prefs_namespace_,false);
 }
 
 ReciverConfig::~ReciverConfig()
 {
-    DetachResetButton();
-    prefs_.end();
 }
 
 
@@ -110,7 +107,7 @@ void ReciverConfig::begin()
 void ReciverConfig::load()
 {
     std::lock_guard<std::mutex> lock(mu_);
-    prefs_.begin(PREF_NAMESPACE,true);
+    prefs_.begin(prefs_namespace_,true);
     String saved_ip = prefs_.getString("pc_ip","");
     String saved_port = prefs_.getString("pc_port","");
     prefs_.end();
@@ -135,10 +132,11 @@ void ReciverConfig::load()
     }
 }
 
+//have to fix 
 void ReciverConfig::save(const char* ip_str, uint16_t port) 
 {
     std::lock_guard<std::mutex> lock(mu_);
-    prefs_.begin(PREF_NAMESPACE,false);
+    prefs_.begin(prefs_namespace_,false);
     prefs_.putString("pc_ip", String(ip_str));
     prefs_.putString("pc_port", String((unsigned)port));
     prefs_.end();
@@ -153,7 +151,7 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
 void ReciverConfig::clear()
 {
     std::lock_guard<std::mutex> lock(mu_);
-    prefs_.begin(PREF_NAMESPACE,false);
+    prefs_.begin(prefs_namespace_,false);
     prefs_.remove("pc_ip");
     prefs_.remove("pc_port");
     prefs_.end();

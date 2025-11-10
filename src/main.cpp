@@ -73,29 +73,23 @@ void setup()
     }
     else
     {
-        if (ReciverConfig::ConfSRButtonTaskHandle_)
+        if (ReciverConfig::ConfSRButtonTaskHandle_) //static ConfSRButtonTaskHandle_
         {
-            /* code */
-        }
-        if (recivercfg.ConfSRButtonTaskHandle_)
-        {
-            /* code */
+            audio_rs_instance.conf_portal_rst_button_handler_ = ReciverConfig::ConfSRButtonTaskHandle_;
         }
         
     }
     
-    
     audio_rs_instance.set_reciver_config_ptr(&recivercfg);
 
     static WiFiClient WiFi_client;
-
+    audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
 
     if (!audio_rs_instance.initI2S())
     {
         Serial.println("I2S init Failed");
     }
 
-    audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
     // 8) Start tasks (trampolines already declared in header)
     TaskHandle_t h;
     audio_rs_instance.start_task("I2SRead", 4096, 2, 1, AUDIO_RS::I2SReadTrampoline, &audio_rs_instance, &h);
