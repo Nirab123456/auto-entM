@@ -130,8 +130,9 @@ bool ReciverConfig::GSVIpPort(
         }
     }else {
         Serial.println("ReciverConfig::StartConfigPortal:: Both IP and Port missing");
+        return false;
     }
-    
+    return true;
 }
 
 bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_password)
@@ -204,8 +205,10 @@ bool ReciverConfig::StartConfigPortal(const char* ap_ssid, const char* ap_passwo
         {
             audio_rs_class_ptr_ ->set_consumer_ready_flag(true);
         }
-        
-
+        else
+        {
+            audio_rs_class_ptr_ ->set_consumer_ready_flag(false);
+        }
     }
     return ok;
 }
