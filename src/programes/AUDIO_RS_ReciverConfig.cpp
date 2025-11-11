@@ -48,8 +48,8 @@ void ReciverConfig::load()
 {
     std::lock_guard<std::mutex> lock(mu_);
     prefs_.begin(prefs_namespace_,true);
-    String saved_ip = prefs_.getString("pc_ip","");
-    String saved_port = prefs_.getString("pc_port","");
+    String saved_ip = prefs_.getString(PREFS_IP_ID,"");
+    uint32_t saved_port_u = prefs_.getUInt(PREFS_IP_LABEL, 0);
     prefs_.end();
 
     IPAddress tmp;
@@ -61,10 +61,10 @@ void ReciverConfig::load()
     {
         ip_ = IPAddress(0,0,0,0);
     }
-    if (saved_ip.length())
+
+    if (saved_port_u > 0 && saved_port_u < 65535)
     {
-        long p = saved_port.toInt();
-        port_ = (p > 0 && p <= 65535) ? static_cast<uint16_t>(p) : 0;
+        port_ = static_cast<uint16_t>(saved_port_u);
     }
     else
     {
