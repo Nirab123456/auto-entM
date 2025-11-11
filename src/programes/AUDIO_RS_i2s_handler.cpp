@@ -63,6 +63,17 @@ bool AUDIO_RS::initI2S()
     // Clear DMA buffers
     i2s_zero_dma_buffer(micfg_.i2s_port);
 
+    // check and set i2sQueue
+    if (i2s_queue_ == nullptr)
+    {
+        i2s_queue_ = xQueueCreate(SIZE_OF_A_BYTE_IN_BITS, sizeof(size_t));
+        if (!i2s_queue_)
+        {
+            Serial.println("AUDIO_RS::initi2S::i2s_queue_ ->Auto create failed");
+        }
+        Serial.println("AUDIO_RS::initi2S::i2s_queue_ ->Created");
+    }
+    
     i2s_installed_ = true;
     Serial.printf("I2S: initialized on port %d (dma_buf_count=%d dma_buf_len=%u)\n", micfg_.i2s_port, dma_buf_count, (unsigned)dma_buf_len);
     return true;
