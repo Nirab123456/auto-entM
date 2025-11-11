@@ -10,6 +10,7 @@ bool AUDIO_RS::initI2S()
     // store port for later deinit
     if (!mic_configured_.load(std::memory_order_acquire))
     {
+        Serial.println("AUDIO_RS::initI2S:: Mic is not configured");
         return false;
     }
     

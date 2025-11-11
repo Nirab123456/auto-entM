@@ -19,3 +19,4 @@ constexpr char* PREFS_IP_ID = "pc_ip";
 constexpr char* PREFS_IP_LABEL = "Receiver_IP";
 constexpr char* PREFS_PORT_ID= "pc_port";
 constexpr char* PREFS_PORT_LABEL= "Receiver_Port";
+constexpr size_t ERR_SZ = 128;
