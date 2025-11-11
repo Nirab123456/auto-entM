@@ -12,6 +12,6 @@ struct MicrophoneConfig{
     i2s_pin_config_t i2spinconfiguration;
     uint8_t channel_count;
 
-    bool validate(char*& err);
+    bool validate(char* err);
 
 };

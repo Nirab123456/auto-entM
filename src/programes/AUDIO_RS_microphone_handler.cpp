@@ -5,15 +5,25 @@
 void AUDIO_RS::set_micfg(const MicrophoneConfig &cfg)
 {
     micfg_ = cfg;
-    char* s = nullptr;
-    bool ok = micfg_.validate(s);
-    mic_configured_.store(ok, std::memory_order_release);
-    if (CHANNEL_COUNT_)
+
+    char errbuf[128] = {0};
+    if (!micfg_.validate(errbuf))
     {
-        CHANNEL_COUNT_->store(micfg_.channel_count,std::memory_order_relaxed);
-    }   
+        Serial.printf("AUDIO_RS::set_micfg:: %s\n", errbuf);
+        mic_configured_.store(false, std::memory_order_release);
+    }
+    else
+    {
+        mic_configured_.store(true, std::memory_order_release);
+        if (CHANNEL_COUNT_)
+        {
+            CHANNEL_COUNT_->store(micfg_.channel_count, std::memory_order_relaxed);
+        }
+        
+    }
 }
-bool MicrophoneConfig::validate(char*& err)
+
+bool MicrophoneConfig::validate(char* err)
 {
     if (channel_count != 1 || channel_count !=2)
     {
