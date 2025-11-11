@@ -159,7 +159,7 @@ bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* 
     char ip_buffer[DEFAULT_IP_BUFFER_SIZE] = {0};
     char port_buffer[DEFAULT_PORT_BUFFER_SIZE] = {0};
 
-    GSVIpPort(
+    bool ok = GSVIpPort(
         ip_buffer, 
         port_buffer, 
         force_start_conf_portal, 
@@ -186,26 +186,6 @@ bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* 
         }
     }
 
-    WiFiManager wm;
-
-
-    bool ok;
-    if (!ap_ssid || strlen(ap_ssid) == 0)
-    {
-        ok = wm.startConfigPortal();
-    }
-    else
-    {
-        if (!ap_password || strlen(ap_password) == 0)
-        {
-            wm.startConfigPortal(ap_ssid);
-        }
-        else
-        {
-            ok = wm.startConfigPortal(ap_ssid, ap_password);
-        }
-    }
-    
     if (ok) {
         Serial.println("ReciverConfig::startConfigPortal: portal returned success (credentials acquired or already connected)");
     } else {
