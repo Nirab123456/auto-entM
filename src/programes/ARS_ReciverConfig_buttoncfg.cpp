@@ -66,7 +66,7 @@ bool ReciverConfig::GSVIpPort(
 
     if (force_start_conf_portal)
     {
-        if(ap_ssid && strlen(ap_ssid) > 0)
+        if(ap_ssid && ap_ssid[0])
         {
             if (ap_password && strlen(ap_password) > 0)
             {
@@ -87,50 +87,59 @@ bool ReciverConfig::GSVIpPort(
         ok = wm.autoConnect();
     }
     
-    if (ok) {
-        Serial.println("ReciverConfig::StartConfigPortal: portal exited (success or user closed)");
-    } else {
-        Serial.println("ReciverConfig::StartConfigPortal: portal failed or timed out");
+    if (!ok) {
+        Serial.println("ReciverConfig::GSVIpPort:: portal failed or timed out");
+        return false;
     }
 
     const char* entered_ip = ip_param.getValue();
     const char* entered_port = port_param.getValue();
 
+    if (
+        ((entered_ip == nullptr) || (entered_ip[0] == 0)) &&
+        ((entered_port == nullptr) || (entered_port[0] == 0))
+    )
+    {
+        Serial.println("ReciverConfig::GSVIpPort:: no IP/port entered in portal");
+        return true;         
+    }
+    
+    uint16_t port_val = 0;
+    if (entered_port && entered_port[0])
+    {
+        long p = atol(entered_port);
+        if (p > 0 && p <= 65525)
+        {
+            port_val = static_cast<uint16_t>(p);
+        }
+        else
+        {
+            port_val = 0;
+        }
+    }
+    
     if (entered_ip && entered_ip[0])
     {
         IPAddress tmp;
         if (tmp.fromString(String(entered_ip)))
         {
-            unsigned p = 0;
-            if (entered_port && entered_port[0])
-            {
-                p = (unsigned)atoi(entered_port);
-            }
-            if (p > 0 && p <= 655535)
-            {
-                save(entered_ip, static_cast<uint16_t> (p)); // new ip and port
-                Serial.printf("ReciverConfig::StartConfigPortal - saved receiver IP=%s PORT=%u\n", entered_ip, (unsigned)p);
-            }
-            else
-            {
-                p = NULL;
-                //best effort - have to fix ReciverConfig::save to save  even 1 keepin other same as previous
-                save(entered_ip, p); // keep previous port new ip 
-            }   
+            save(entered_ip, port_val);
+            Serial.printf("ReciverConfig::GSVIpPort - saved IP=%s PORT=%u\n", entered_ip, (unsigned)port_val);
+            return true;
+        }
+        else
+        {
+            Serial.printf("ReciverConfig::GSVIpPort - invalid IP entered (%s)\n", entered_ip);
+            // do not save invalid IP; keep previous
+            return false;
         }
     }
-    else if (entered_port && entered_port[0])
+    else if (port_val != 0)
     {
-        unsigned p = 0;
-        p = (unsigned)atoi(entered_port);
-        if (p > 0 && p<= 655535)
-        {
-            entered_ip = nullptr;
-            save(entered_ip, static_cast<uint16_t>(p)); // new port
-        }
-    }else {
-        Serial.println("ReciverConfig::StartConfigPortal:: Both IP and Port missing");
-        return false;
+        entered_ip = nullptr;
+        save(entered_ip, port_val); // our save accepts nullptr for ip
+        Serial.printf("ReciverConfig::GSVIpPort - saved PORT=%u (IP unchanged)\n", (unsigned)port_val);
+        return true;    
     }
     return true;
 }
