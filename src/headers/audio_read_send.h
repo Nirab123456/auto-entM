@@ -8,6 +8,8 @@
 #include <vector>
 #include <WiFi.h>            // for WiFiClient and WiFi.isConnected()
 #include "microphoneConfig.h"
+#include "nvs_flash.h"
+
 using TASK_TRAMPOLINE_FN = void(*)(void*);
 
 // forward declare your ReciverConfig (you provided this elsewhere)
@@ -225,4 +227,5 @@ class AUDIO_RS
         // expose some spans for read-only inspection if needed
         std::span<uint32_t> get_i2s_buffer() const { return i2s_buffer_; }
         std::span<uint32_t> get_ring_payload_flat() const { return ring_payload_flat_; }
+        void nvsInitMain();
 };

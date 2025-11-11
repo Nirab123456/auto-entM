@@ -47,7 +47,12 @@ void ReciverConfig::begin()
 void ReciverConfig::load()
 {
     std::lock_guard<std::mutex> lock(mu_);
-    prefs_.begin(prefs_namespace_,true);
+    if (!prefs_.begin(prefs_namespace_, true)) {
+
+        Serial.printf("ReciverConfig::load: prefs.begin(%s) failed (read-only)",prefs_namespace_);
+        // keep current ip_/port_ as-is (likely 0)
+        return;
+    }    
     String saved_ip = prefs_.getString(PREFS_IP_ID,"");
     uint32_t saved_port_u = prefs_.getUInt(PREFS_IP_LABEL, 0);
     prefs_.end();
@@ -76,7 +81,7 @@ void ReciverConfig::load()
 void ReciverConfig::save(const char* ip_str, uint16_t port)
 {
     std::lock_guard<std::mutex> lock(mu_);
-    if (prefs_.begin(prefs_namespace_, false))
+    if (!(prefs_.begin(prefs_namespace_, false)))
     {
         Serial.println("ReciverConfig::save::prefs.begin() failed!");
         return;
@@ -89,6 +94,7 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
         if (tmp.fromString(String(ip_str)))
         {
             ip_ = tmp;
+            prefs_.putString(PREFS_IP_ID, ip_.toString());
         }
         else
         {
@@ -96,10 +102,18 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
             prefs_.remove(PREFS_IP_ID);
         }
     }
-    if (ip_ != IPAddress(0,0,0,0))
+    else
     {
-        prefs_.putString(PREFS_IP_ID, String(ip_));
+        if (ip_ != IPAddress(0,0,0,0))
+        {
+            prefs_.putString(PREFS_IP_ID,ip_.toString());
+        }
+        else
+        {
+            prefs_.remove(PREFS_IP_ID);
+        }
     }
+    
     if (port > 0 && port <= 65535)
     {
         port_ = port;
@@ -114,8 +128,8 @@ void ReciverConfig::clear()
 {
     std::lock_guard<std::mutex> lock(mu_);
     prefs_.begin(prefs_namespace_,false);
-    prefs_.remove("pc_ip");
-    prefs_.remove("pc_port");
+    prefs_.remove(PREFS_IP_ID);
+    prefs_.remove(PREFS_PORT_ID);
     prefs_.end();
 
 

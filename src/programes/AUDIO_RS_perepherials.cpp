@@ -47,3 +47,24 @@ void AUDIO_RS::NetworkDataWriterLoopTrampoline(void* pv)
     }
     self->NetworkDataWriterLoop();
 }
+
+
+void AUDIO_RS::nvsInitMain()
+{
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        Serial.println("AUDIO_RS::nvsInitMain:: Erasing & re-init");
+        nvs_flash_erase();
+        nvs_err = nvs_flash_init();
+    }
+
+    if (nvs_err != ESP_OK)
+    {
+        Serial.printf("AUDIO_RS::nvsInitMain::NVS init failed; %d\n", (int)nvs_err);
+    }
+    else
+    {
+        Serial.printf("AUDIO_RS::nvsInitMain::Passed");
+    }
+}

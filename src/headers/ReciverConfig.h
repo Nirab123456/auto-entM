@@ -5,6 +5,7 @@
 #include "a_c_s.h"
 #include <algorithm> 
 #include <WiFiManager.h>
+#include "nvs_flash.h"
 
 inline constexpr uint16_t CONNECTION_RETRY_INTERVAL_MS = 200;
 

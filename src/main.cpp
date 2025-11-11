@@ -11,7 +11,7 @@ std::shared_ptr<std::atomic<size_t>> g_ring_tail;
 std::shared_ptr<std::atomic<uint64_t>> g_abs_idx;
 std::shared_ptr<std::atomic<uint32_t>> g_sequence_counter;
 
-static ReciverConfig recivercfg;
+static ReciverConfig recivercfg("config");
 
 static AUDIO_RS audio_rs_instance;
 MicrophoneConfig miccfg;
@@ -25,6 +25,7 @@ void setup()
     delay(200);
     Serial.println("Starting up...");
 
+    audio_rs_instance.nvsInitMain();
     wifiok = WiFi.begin();
     static WiFiClient WiFi_client;
     audio_rs_instance.set_WiFi_client_ptr(&WiFi_client);
