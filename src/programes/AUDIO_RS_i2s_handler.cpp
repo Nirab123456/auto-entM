@@ -73,7 +73,12 @@ bool AUDIO_RS::initI2S()
         }
         Serial.println("AUDIO_RS::initi2S::i2s_queue_ ->Created");
     }
-    
+
+    if (network_slot_queue_ == nullptr) {
+        Serial.println("AUDIO_RS::initI2S ->network_slot_queue_:: nullptr");
+
+    }
+
     i2s_installed_ = true;
     Serial.printf("I2S: initialized on port %d (dma_buf_count=%d dma_buf_len=%u)\n", micfg_.i2s_port, dma_buf_count, (unsigned)dma_buf_len);
     return true;

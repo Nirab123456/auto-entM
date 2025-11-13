@@ -231,12 +231,14 @@ void AUDIO_RS::NetworkTaskLoop()
 
 void AUDIO_RS::NetworkDataWriterLoop()
 {
+    Serial.println("AUDIO_RS::NetworkDataWriterLoop");
     if (stopping_check_del("NetworkDataWriterLoop"))
     {
         vTaskDelete(nullptr);
     }
 
-    if (!network_slot_queue_) {
+    if (network_slot_queue_ == nullptr) {
+        Serial.println("AUDIO_RS::NetworkDataWriterLoop ->network_slot_queue_:: nullptr");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
