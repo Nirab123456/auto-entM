@@ -1,0 +1,3 @@
+﻿dependencies:
+  espressif/arduino-esp32:
+    override_path: ./components/arduino-esp32-3.3.4
