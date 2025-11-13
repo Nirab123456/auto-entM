@@ -9,6 +9,7 @@
 #include <WiFi.h>            // for WiFiClient and WiFi.isConnected()
 #include "microphoneConfig.h"
 #include "nvs_flash.h"
+#include "psramalloc.h"
 
 using TASK_TRAMPOLINE_FN = void(*)(void*);
 
