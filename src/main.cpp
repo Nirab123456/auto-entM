@@ -4,7 +4,7 @@
 const char* WIFI_SSID = "94 Pembroke Street - 2";
 const char* WiFi_PASS = "welcomehome";
 
-
+//shared ptrs 
 std::shared_ptr<std::atomic<bool>> g_consumer_ready;
 std::shared_ptr<std::atomic<size_t>> g_ring_head;
 std::shared_ptr<std::atomic<size_t>> g_ring_tail;
