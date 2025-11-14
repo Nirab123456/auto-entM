@@ -1,4 +1,8 @@
+#include "Arduino.h"
+
 #include "main_helper.h"
+
+
 
 
 const char* WIFI_SSID = "94 Pembroke Street - 2";
@@ -126,7 +130,8 @@ void setup()
     // Optionally you can programmatically update recfg.save("192.168.x.y", port) elsewhere (OTA/UI).
 }
 
-void loop() {
-    // Idle; tasks do the work.
-    vTaskDelay(pdMS_TO_TICKS(5000));
+extern "C" void app_main()
+{
+    initArduino();
+    setup();
 }
