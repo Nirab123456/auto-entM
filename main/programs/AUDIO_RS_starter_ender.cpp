@@ -13,15 +13,22 @@ AUDIO_RS::AUDIO_RS(
     std::shared_ptr<std::atomic<size_t>> ring_tail,
     std::shared_ptr<std::atomic<uint64_t>> abs_idx
 ):
-    i2s_buffer_(i2s_buffer),
-    ring_payload_flat_(ring_payload_flat),
-    frames_per_packet_(frames_per_packet),
     consumer_ready_sp_(std::move(consumer_ready)),
     ring_head_sp_(std::move(ring_head)),
     ring_tail_sp_(std::move(ring_tail)),
-    abs_idx_sp_(std::move(abs_idx))
+    abs_idx_sp_(std::move(abs_idx)),
+    sequence_counter_(nullptr),
+    CHANNEL_COUNT_(nullptr),
+    connection_failure_{0},
+    conn_retry_base_ms_(2000),
+    conn_retry_max_ms_(30000),
+    overrun_policy_(OverRunPolicy::DROP_NEWEST),
+    drop_count_newest_{0},
+    drop_count_oldest_{0},
+    i2s_buffer_(i2s_buffer),
+    ring_payload_flat_(ring_payload_flat),
+    frames_per_packet_(frames_per_packet)
 {}
-
 
 void AUDIO_RS::set_consumer_ready(std::shared_ptr<std::atomic<bool>> ar)
 {
