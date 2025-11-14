@@ -1,4 +1,5 @@
 build/
 sdkconfig.old
-components/
+components/arduino-esp32-3.3.4
 managed_components/
+components/ext_arduino_library/WiFiManager

@@ -16,7 +16,7 @@ function(ensure_arduino_library libname giturl)
   if(ENSURE_DEST_SUBDIR)
     set(_dest_dir "${CMAKE_SOURCE_DIR}/${ENSURE_DEST_SUBDIR}/${libname}")
   else()
-    set(_dest_dir "${CMAKE_SOURCE_DIR}/main/libraries/${libname}")
+    set(_dest_dir "${CMAKE_SOURCE_DIR}/components/ext_arduino_library/${libname}")
   endif()
 
   if(EXISTS "${_dest_dir}")
@@ -71,5 +71,6 @@ ensure_arduino_library("WiFiManager" "https://github.com/tzapu/WiFiManager.git" 
 
 
 cmake_minimum_required(VERSION 3.16)
+include_directories(${CMAKE_SOURCE_DIR}/components/ext_arduino_library/WiFiManager)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(auto_entm_aurdino_as_tool)
