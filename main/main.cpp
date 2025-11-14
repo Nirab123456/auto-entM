@@ -8,7 +8,6 @@
 const char* WIFI_SSID = "94 Pembroke Street - 2";
 const char* WiFi_PASS = "welcomehome";
 
-constexpr size_t FRAMES_PER_PACKET = 1024;
 constexpr size_t RING_SIZE = 64;
 static_assert((RING_SIZE & (RING_SIZE - 1)) == 0, "Ring size should be power of 2");
 constexpr size_t I2S_WORD_SLOTS_LEN = FRAMES_PER_PACKET * 2;
