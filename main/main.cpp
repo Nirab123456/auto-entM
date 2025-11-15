@@ -150,8 +150,6 @@ void setup()
     // Optionally you can programmatically update recfg.save("192.168.x.y", port) elsewhere (OTA/UI).
 }
 
-extern "C" void app_main()
-{
-    initArduino();
+extern "C" void arduino_setup_call() {
     setup();
 }
