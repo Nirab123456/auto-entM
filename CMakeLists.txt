@@ -6,6 +6,12 @@
 # Example:
 #   ensure_arduino_library("WiFiManager" "https://github.com/tzapu/WiFiManager.git" "2.0.17")
 #
+cmake_minimum_required(VERSION 3.16)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+
 function(ensure_arduino_library libname giturl)
   set(options)
   set(oneValueArgs TAG DEST_SUBDIR)
@@ -70,7 +76,7 @@ ensure_arduino_library("WiFiManager" "https://github.com/tzapu/WiFiManager.git" 
 
 
 
-cmake_minimum_required(VERSION 3.16)
+
 include_directories(${CMAKE_SOURCE_DIR}/components/ext_arduino_library/WiFiManager)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(auto_entm_aurdino_as_tool)
