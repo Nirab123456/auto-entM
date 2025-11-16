@@ -28,7 +28,8 @@ class AUDIO_RS
         // -----------------------
         // core shared atomics
         // -----------------------
-        bool i2s_installed_ = false;
+        std::atomic<bool>i2s_installed_{false};
+
         const uint32_t HEADER_MAGIC_ = 0x45535032;
         const uint8_t FORMAT_INT32_LEFT24_ = 1;
 
@@ -94,7 +95,9 @@ class AUDIO_RS
         QueueHandle_t network_slot_queue_{nullptr};    // carries size_t slot indices
         TaskHandle_t  network_writer_task_{nullptr};
 
-
+        //i2s channel handle
+        i2s_chan_handle_t rx_chan_ = nullptr;
+        i2s_chan_handle_t tx_chan_ = nullptr;
 
         std::atomic<bool> stopping_{false};
 

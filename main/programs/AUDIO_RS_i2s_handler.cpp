@@ -1,97 +1,141 @@
 #include "headers/audio_read_send.h"
 #include <esp_timer.h>
-#include "driver/i2s.h"
+#include "driver/i2s_std.h"
 #include "headers/a_c_s.h"
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
-// Initialize I2S for capture. Returns true on success.
+
+
 bool AUDIO_RS::initI2S()
 {
-    // store port for later deinit
     if (!mic_configured_.load(std::memory_order_acquire))
     {
-        Serial.println("AUDIO_RS::initI2S:: Mic is not configured");
+        Serial.println("AUDIO_RS::initI2S::Mic not configured");
+    }
+    if (frames_per_packet_ == 0)
+    {
+        Serial.println("AUDIO_RS::initI2S::Frames per packet = 0");
+    }
+
+    if (i2s_installed_.load(std::memory_order_acquire))
+    {
+        if (rx_chan_)
+        {
+            i2s_channel_disable(rx_chan_);
+            i2s_del_channel(rx_chan_);
+            rx_chan_ = nullptr;
+
+        }
+        if (tx_chan_)
+        {
+            i2s_channel_disable(tx_chan_);
+            i2s_del_channel(tx_chan_);
+            tx_chan_ = nullptr;
+        }
+        i2s_installed_ = false;
+    }
+    size_t dma_frame_len = frames_per_packet_ / DEFAULT_CHANNEL_COUNT;
+    if (dma_frame_len <  BYTES_PER_SAMPLE)
+    {
+        dma_frame_len = BYTES_PER_SAMPLE;
+    }
+    if (dma_frame_len > 2048)
+    {
+        dma_frame_len = 2048;
+    }
+
+    int dma_frame_num = 6;
+
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(micfg_.i2s_port, I2S_ROLE_MASTER);
+    
+    chan_cfg.dma_frame_num = dma_frame_num;
+    chan_cfg.dma_desc_num = (int)dma_frame_len;
+
+    esp_err_t err = i2s_new_channel(&chan_cfg, nullptr, &rx_chan_);
+    if (err != ESP_OK || rx_chan_ == nullptr)
+    {
+        Serial.printf("AUDIO_RS::initI2s->i2s_new_channel():: Creation failed with err->%d\n",(int)err);
+        rx_chan_ = nullptr;
+        return false;
+    }
+
+    err = i2s_channel_init_std_mode(rx_chan_, &micfg_.i2s_configuration);
+
+    if (err != ESP_OK)
+    {
+        Serial.printf("AUDIO_RS::initI2S-> i2s_channel_init_std_mode()::Failed =%d\n",(int)err);
+        i2s_channel_disable(rx_chan_);
+        i2s_del_channel(rx_chan_);
+        rx_chan_ = nullptr;
         return false;
     }
     
+    err = i2s_channel_enable(rx_chan_);
 
-    // Sanity: we need frames_per_packet_ to compute DMA sizing
-    if (frames_per_packet_ == 0) {
-        Serial.println("I2S init failed: frames_per_packet_ == 0");
+    if (err != ESP_OK)
+    {
+        Serial.printf("AUDIO_RS::initI2S->i2s_channel_enable():Channel enable failed =%d\n",(int)err);
+        i2s_channel_disable(rx_chan_);
+        i2s_del_channel(rx_chan_);
+        rx_chan_ = nullptr;
         return false;
+
     }
 
-    // If a driver is already installed on this port, uninstall first (clean slate)
-    if (i2s_installed_) {
-        i2s_driver_uninstall(micfg_.i2s_port);
-        i2s_installed_ = false;
-    }
+    i2s_channel_disable(rx_chan_);
+    vTaskDelay(pdMS_TO_TICKS(5));
+    i2s_channel_enable(rx_chan_);
 
-    // Compute a reasonable dma_buf_len.
-    // dma_buf_len is the number of "samples" per DMA buffer — choose a fraction of frames_per_packet_.
-    // Keep it at least small (4) and not excessively large.
-    size_t dma_buf_len = frames_per_packet_ / 2;
-    if (dma_buf_len < 4) dma_buf_len = 4;
-    // optionally clamp to a maximum (e.g., 2048) to avoid huge allocations
-    if (dma_buf_len > 2048) dma_buf_len = 2048;
-
-    // number of DMA buffers (tune for latency vs memory)
-    int dma_buf_count = 6;
-
-    // Configure I2S driver
-    i2s_config_t i2s_config = micfg_.i2s_configuration;
-    // pin config - using your board-level constants
-    i2s_pin_config_t pin_config = micfg_.i2spinconfiguration;
-
-    esp_err_t err;
-
-    // Install driver
-    err = i2s_driver_install(micfg_.i2s_port, &i2s_config, 0, nullptr);
-    if (err != ESP_OK) {
-        Serial.printf("I2S: driver install failed (err %d)\n", (int)err);
-        return false;
-    }
-
-    // Set pins
-    err = i2s_set_pin(micfg_.i2s_port, &pin_config);
-    if (err != ESP_OK) {
-        Serial.printf("I2S: set_pin failed (err %d) - uninstalling driver\n", (int)err);
-        i2s_driver_uninstall(micfg_.i2s_port);
-        return false;
-    }
-
-    // Clear DMA buffers
-    i2s_zero_dma_buffer(micfg_.i2s_port);
-
-    // check and set i2sQueue
     if (i2s_queue_ == nullptr)
     {
         i2s_queue_ = xQueueCreate(SIZE_OF_A_BYTE_IN_BITS, sizeof(size_t));
+
         if (!i2s_queue_)
         {
-            Serial.println("AUDIO_RS::initi2S::i2s_queue_ ->Auto create failed");
+            Serial.println("AUDIO_RS::initI2S->i2s_queue_::Autocreate failed");
         }
-        Serial.println("AUDIO_RS::initi2S::i2s_queue_ ->Created");
+        else
+        {
+            Serial.println("AUDIO_RS::initI2S->i2s_queue_::Created");
+        }
     }
 
-    if (network_slot_queue_ == nullptr) {
+    if (network_slot_queue_ == nullptr)
+    {
         Serial.println("AUDIO_RS::initI2S ->network_slot_queue_:: nullptr");
-
     }
-
-    i2s_installed_ = true;
-    Serial.printf("I2S: initialized on port %d (dma_buf_count=%d dma_buf_len=%u)\n", micfg_.i2s_port, dma_buf_count, (unsigned)dma_buf_len);
+    
+    i2s_installed_ = true;    
+    Serial.printf("I2S: initialized (dma_frame_num=%d dma_frame_len=%u)\n",
+                  dma_frame_num, (unsigned)dma_frame_len);
     return true;
 }
 
 void AUDIO_RS::deinitI2S()
 {
-    if (!i2s_installed_) return;
-    // Stop any I2S activity as needed - driver uninstall handles it
-    i2s_driver_uninstall(micfg_.i2s_port);
+    if (!i2s_installed_)
+    {
+        return;
+    }
+    if (rx_chan_)
+    {
+        i2s_channel_disable(rx_chan_);
+        i2s_del_channel(rx_chan_);
+        rx_chan_ = nullptr;
+    }
+
+    if (tx_chan_)
+    {
+        i2s_channel_disable(tx_chan_);
+        i2s_del_channel(tx_chan_);
+        tx_chan_ = nullptr;
+    }
+    
     i2s_installed_ = false;
-    Serial.println("I2S: driver uninstalled");
+    Serial.println("AUDIO_RS::deinitI2S::Driver uninstalled");
+    
 }
+
 
 void AUDIO_RS::I2SReaderLoop()
 {
@@ -138,8 +182,8 @@ void AUDIO_RS::I2SReaderLoop()
         }
 
         size_t read_bytes = 0;
-        esp_err_t err = i2s_read(
-            micfg_.i2s_port,
+        esp_err_t err = i2s_channel_read(
+            rx_chan_,
             i2s_buffer_.data(),
             bytes_to_read,
             &read_bytes,
