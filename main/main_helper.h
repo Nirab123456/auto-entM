@@ -30,48 +30,20 @@ inline auto make_shared_atomic_uint32_t(uint32_t i)
     return std::make_shared<std::atomic<uint32_t>>(i);
 }
 
-
-inline void user_mic_config_setter(MicrophoneConfig& mcfg)
+inline void user_mic_config_setter(MicrophoneConfig &mcfg)
 {
     mcfg.channel_count = 1;
     mcfg.i2s_port = I2S_NUM_0;
+    i2s_std_config_t std_cfg;
 
-    // zero the config then assign fields (C++-safe)
-    i2s_config_t cfg;
-    ::memset(&cfg, 0, sizeof(cfg));   // <-- use global memset
-
-    cfg.mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX);
-    cfg.sample_rate = USER_SAMPLE_RATE;
-    cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT;
-    cfg.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
-
-    // Use standard constant if available; fallback to legacy combo
-    #ifdef I2S_COMM_FORMAT_STAND_I2S
-    cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-    #else
-    cfg.communication_format = static_cast<i2s_comm_format_t>(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB);
-    #endif
-
-    cfg.intr_alloc_flags = 0;
-    // legacy fields may be marked deprecated but still usable for now
-    cfg.dma_buf_count = USER_DMA_BUFFER_COUNT;
-    cfg.dma_buf_len = (FRAMES_PER_PACKET / 2);
-
-    cfg.use_apll = true;
-    cfg.tx_desc_auto_clear = false;
-    cfg.fixed_mclk = 0;
-
-    mcfg.i2s_configuration = cfg;
-
-    // pins: zero then set explicitly (set mck_io_num to avoid missing-field warning)
-    i2s_pin_config_t pins;
-    ::memset(&pins, 0, sizeof(pins));
-
-    pins.bck_io_num = USER_PIN_CLK;
-    pins.ws_io_num  = USER_PIN_WS;
-    pins.data_out_num = I2S_PIN_NO_CHANGE;
-    pins.data_in_num = USER_PIN_SD;
-    pins.mck_io_num = I2S_PIN_NO_CHANGE; // explicit
-
-    mcfg.i2spinconfiguration = pins;
+    std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(USER_SAMPLE_RATE);
+    std_cfg.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO);
+    std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED,
+    std_cfg.gpio_cfg.bclk = static_cast<gpio_num_t>(USER_PIN_CLK);
+    std_cfg.gpio_cfg.ws = static_cast<gpio_num_t>(USER_PIN_WS);
+    std_cfg.gpio_cfg.din = static_cast<gpio_num_t>(USER_PIN_SD);
+    std_cfg.gpio_cfg.invert_flags.mclk_inv = 0;
+    std_cfg.gpio_cfg.invert_flags.bclk_inv = 0;
+    std_cfg.gpio_cfg.invert_flags.ws_inv = 0;
+    mcfg.i2s_configuration = std_cfg;
 }

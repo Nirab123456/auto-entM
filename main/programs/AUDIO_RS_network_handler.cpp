@@ -422,10 +422,10 @@ void AUDIO_RS::WriteTCPHeader(
     header_buffer_[24] = (uint8_t)(number_of_frames & 0xff);
     header_buffer_[25] = (uint8_t)((number_of_frames >> 8) & 0xff);
     header_buffer_[26] = (uint8_t)CHANNEL_COUNT_->load(std::memory_order_acquire);
-    header_buffer_[27] = (uint8_t)(static_cast<std::size_t>(micfg_.i2s_configuration.bits_per_sample / SIZE_OF_A_BYTE_IN_BITS));
+    header_buffer_[27] = (uint8_t)(static_cast<std::size_t>(micfg_.SlotBitWidth_ / SIZE_OF_A_BYTE_IN_BITS));
     for (size_t i = 0; i < MIN_BYTES_READ; i++)
     {
-        header_buffer_[28+i] = (uint8_t)(micfg_.i2s_configuration.sample_rate >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+        header_buffer_[28+i] = (uint8_t)(static_cast<uint32_t>(micfg_.i2s_configuration.clk_cfg.sample_rate_hz) >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
     }
     //finish header  
     header_buffer_[32] = (uint8_t)(FORMAT_INT32_LEFT24_ & 0xff);  

@@ -11,7 +11,9 @@ struct MicrophoneConfig{
     i2s_std_config_t i2s_configuration;
     i2s_std_gpio_config_t i2spinconfiguration;
     uint8_t channel_count;
+    uint8_t SlotBitWidth_;
 
     bool validate(char* err);
+    uint8_t GetSlotBitWidth(const i2s_std_config_t & cfg);
 
 };

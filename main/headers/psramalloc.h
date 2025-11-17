@@ -2,27 +2,53 @@
 #include <cstdint>
 #include <cstdio>
 
-template <typename T>
-T* allocate_in_parse(size_t N, const char* label = nullptr)
+template<typename T>
+static inline T* AllocPSRamArray(size_t N, const char* label = nullptr)
 {
-    size_t bytes = N * sizeof(T);
-    T* ptr = nullptr;
-
-    ptr = reinterpret_cast<T*>(
-        heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
-    );
-
-    if (ptr)
+    if (N == 0)
     {
-        if (label)
-        {
-            Serial.printf("PsRamAllocator::allocate_in_parse::%s: %u bytes\n",label,(unsigned)bytes, (void*)ptr);
-            return ptr;
-        }
-        
+        return nullptr;
+    }
+    size_t bytes = N* sizeof(T);
+    size_t free_ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+
+    if (label) {
+        Serial.printf("AllocPSRamArray::%s->Allocating:%llu bytes (free %llu)\n",
+                      label, (unsigned long long)bytes, (unsigned long long)free_ps);
+    }
+
+    T* ptr = reinterpret_cast<T*>(heap_caps_calloc(N, sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+
+
+    if (ptr) {
+        if (label) Serial.printf("AllocPSRamArray::%s->Allocated:%llu bytes at %p\n", label,
+                                 (unsigned long long)bytes, (void*)ptr);
+    } else {
+        if (label) Serial.printf("AllocPSRamArray::%s->Allocation FAILED (%llu bytes)\n", label,
+                                 (unsigned long long)bytes);
     }
     
-    // failed
-    Serial.printf("PsRamAllocator::allocate_in_parse::%s:Parse ram allocation failed");
-    return nullptr;
+    return ptr;
+}
+
+template <typename T>
+static inline T* alloc_dma_array(size_t N, const char* label = nullptr)
+{
+    if (N == 0)
+    {
+        return nullptr;
+    }
+    size_t bytes = n* sizeof(T);
+    T* ptr = reinterpret_cast<T*>(heap_caps_calloc(N, sizeof(T), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    return ptr;
+    
+}
+
+template <typename T>
+static inline void FreeCaps(T* p)
+{
+    if(p)
+    {
+        heaps_caps_free(reinterpret_cast<void*>(p));
+    }
 }
