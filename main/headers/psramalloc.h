@@ -32,7 +32,7 @@ static inline T* AllocPSRamArray(size_t N, const char* label = nullptr)
 }
 
 template <typename T>
-static inline T* alloc_dma_array(size_t N, const char* label = nullptr)
+static inline T* AllocDmaArray(size_t N, const char* label = nullptr)
 {
     if (N == 0)
     {

@@ -3,13 +3,21 @@
 #include "headers/microphoneConfig.h" // your MicrophoneConfig definition (adjust path)
 #include "headers/ReciverConfig.h"    // optional, if used for network connect
 
+const char* WIFI_SSID = "94 Pembroke Street - 2";
+const char* WiFi_PASS = "welcomehome";
+
+
 constexpr uint16_t USER_SAMPLE_RATE = 48000;
 constexpr uint8_t USER_DMA_BUFFER_COUNT = 6;
 constexpr uint8_t USER_PIN_CLK = 7;
 constexpr uint8_t USER_PIN_WS = 15;
 constexpr uint8_t USER_PIN_SD = 16;
+constexpr uint8_t RESET_WIFI_BUTTON_PIN = 10;
 constexpr size_t FRAMES_PER_PACKET = 1024;
-
+constexpr size_t RING_SIZE = 64;
+static_assert((RING_SIZE & (RING_SIZE - 1)) == 0, "Ring size should be power of 2");
+constexpr size_t I2S_WORD_SLOTS_LEN = FRAMES_PER_PACKET * 2;
+constexpr size_t RING_FLAT_LEN = RING_SIZE * FRAMES_PER_PACKET;
 
 inline auto make_shared_atomic_bool(bool i = false)
 {

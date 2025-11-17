@@ -117,6 +117,7 @@ class AUDIO_RS
         void RingWriterLoop();
         void FingerPrintLoop();
         void NetworkTaskLoop();
+        void NetworkDataWriterLoop();
         void ClearHandleField(TaskHandle_t h);
         bool IsKnownHandle(TaskHandle_t h) const;
         bool stopping_check_del(char* taskname);
@@ -145,7 +146,6 @@ class AUDIO_RS
         bool initI2S();
         void deinitI2S();
         void Ring_clear_Rst();
-        void NetworkDataWriterLoop();
 
         void PauseNetworkStreaming();
         bool ReqNetworkReconnect();
