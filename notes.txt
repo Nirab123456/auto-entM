@@ -1,3 +1,6 @@
 launch openOCD: openocd -f board/esp32s3-builtin.cfg -c "adapter_khz 1000" -c "gdb memory_map disable" -d2
 Serial monitor with 115200 budrate - idf.py monitor -b 115200
 clean whole project - idf.py fullclean
+
+
+ERRORS : CONFIG_FREERTOS_HZ
