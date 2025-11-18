@@ -20,7 +20,7 @@ inline static std::span<uint64_t> ring_ts_us_span(RING_TIMESTAMP, RING_SIZE);
 
 inline std::span<uint32_t> make_ring_flat_span()
 {
-    return std::span<uint32_t>(&RING_PAYLOAD[0][0], RING_FLAT_LEN);
+    return std::span<uint32_t>(RING_PAYLOAD_FLAT, RING_FLAT_LEN);
 }
 
 
@@ -59,15 +59,6 @@ void setup()
         }
     }
 
-    if (!I2S_WORD_SLOTS)
-    {
-        ESP_LOGE(mainTAG, "I2S_WORD_SLOTS->not available");
-        heap_caps_free(RING_PAYLOAD_FLAT);
-        while (true)
-        {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
-    }
 
     //Set user microphone configuration
     user_mic_config_setter(miccfg);
