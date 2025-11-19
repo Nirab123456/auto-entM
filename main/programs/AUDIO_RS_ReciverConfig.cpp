@@ -4,7 +4,6 @@
 static const char *rcTAG = "AUDIO_RS_ReciverConfig";
 
 
-TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 
 ReciverConfig::ReciverConfig(const char* prefs_namespace)
     :prefs_namespace_(prefs_namespace)

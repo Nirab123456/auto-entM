@@ -64,7 +64,7 @@ class ReciverConfig {
             uint8_t button_pin,
             TickType_t debounce_ms = 20,
             uint32_t hold_ms = 800,
-            UBaseType_t task_prio = 1,
+            UBaseType_t task_prio = 5,
             uint32_t task_stack_bytes = 3072,
             BaseType_t core = -99,
             void* arg = nullptr

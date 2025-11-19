@@ -2,6 +2,7 @@
 
 static const char *bcfgTAG = "ARS_ReciverConfig_buttoncfg";
 
+TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 
 //ISR
 void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
@@ -323,7 +324,7 @@ bool ReciverConfig::AttachResetButton(
                 task_prio,
                 core,
                 ConfRstButtonTrampoline,
-                arg,
+                this,
                 &ConfSRButtonTaskHandle_  
             );
         }
@@ -337,7 +338,7 @@ bool ReciverConfig::AttachResetButton(
         audio_rs_class_ptr_->conf_portal_rst_button_handler_ = ConfSRButtonTaskHandle_;
     }
     pinMode(prefs_rst_open_portal_pin_, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_), ReciverConfig::confButtonIsrHandle, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_), ReciverConfig::confButtonIsrHandle, FALLING);
     ESP_LOGI(bcfgTAG, "ReciverConfig::AttachResetButton:: Button interrupt on pin -> %u", (unsigned)prefs_rst_open_portal_pin_);
     return true;
     

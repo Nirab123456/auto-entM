@@ -110,8 +110,9 @@ static void startup_task(void* pv)
     ESP_LOGI(mainTAG, "startup_task: recivercfg ptr set");
 
     // OPTIONAL: comment out these if you want to isolate
-    // recivercfg.begin();
-    // recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN);
+    recivercfg.begin();
+    recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN);
+    recivercfg.StartConfigPortal();
 
     // init I2S and verify
     if (!audio_rs_instance.initI2S()) {
