@@ -1,5 +1,7 @@
 #include "headers/ReciverConfig.h"
 
+static const char *bcfgTAG = "ARS_ReciverConfig_buttoncfg";
+
 
 //ISR
 void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
@@ -88,7 +90,7 @@ bool ReciverConfig::GSVIpPort(
     }
     
     if (!ok) {
-        Serial.println("ReciverConfig::GSVIpPort:: portal failed or timed out");
+        ESP_LOGE(bcfgTAG, "ReciverConfig::GSVIpPort:: portal failed or timed out");
         return false;
     }
 
@@ -100,7 +102,7 @@ bool ReciverConfig::GSVIpPort(
         ((entered_port == nullptr) || (entered_port[0] == 0))
     )
     {
-        Serial.println("ReciverConfig::GSVIpPort:: no IP/port entered in portal");
+        ESP_LOGI(bcfgTAG, "ReciverConfig::GSVIpPort:: no IP/port entered in portal");
         return true;         
     }
     
@@ -124,12 +126,12 @@ bool ReciverConfig::GSVIpPort(
         if (tmp.fromString(String(entered_ip)))
         {
             save(entered_ip, port_val);
-            Serial.printf("ReciverConfig::GSVIpPort - saved IP=%s PORT=%u\n", entered_ip, (unsigned)port_val);
+            ESP_LOGI(bcfgTAG, "ReciverConfig::GSVIpPort - saved IP=%s PORT=%u\n", entered_ip, (unsigned)port_val);
             return true;
         }
         else
         {
-            Serial.printf("ReciverConfig::GSVIpPort - invalid IP entered (%s)\n", entered_ip);
+            ESP_LOGE(bcfgTAG, "ReciverConfig::GSVIpPort - invalid IP entered (%s)\n", entered_ip);
             // do not save invalid IP; keep previous
             return false;
         }
@@ -138,7 +140,7 @@ bool ReciverConfig::GSVIpPort(
     {
         entered_ip = nullptr;
         save(entered_ip, port_val); // our save accepts nullptr for ip
-        Serial.printf("ReciverConfig::GSVIpPort - saved PORT=%u (IP unchanged)\n", (unsigned)port_val);
+        ESP_LOGI(bcfgTAG, "ReciverConfig::GSVIpPort - saved PORT=%u (IP unchanged)\n", (unsigned)port_val);
         return true;    
     }
     return true;
@@ -146,12 +148,12 @@ bool ReciverConfig::GSVIpPort(
 
 bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* ap_ssid, const char* ap_password)
 {
-    Serial.println("ReciverConfig::startConfigPortal: preparing to start portal");
+    ESP_LOGI(bcfgTAG, "ReciverConfig::startConfigPortal: preparing to start portal");
     bool was_paused = false;
 
     if (audio_rs_class_ptr_)
     {
-        Serial.println("ReciverConfig::StartConfigPortal->PauseNetworkStreaming:Pausing audio");
+        ESP_LOGD(bcfgTAG, "ReciverConfig::StartConfigPortal->PauseNetworkStreaming:Pausing audio");
         audio_rs_class_ptr_->PauseNetworkStreaming();
     }
     
@@ -187,15 +189,15 @@ bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* 
     }
 
     if (ok) {
-        Serial.println("ReciverConfig::startConfigPortal: portal returned success (credentials acquired or already connected)");
+        ESP_LOGI(bcfgTAG, "ReciverConfig::startConfigPortal: portal returned success (credentials acquired or already connected)");
     } else {
-        Serial.println("ReciverConfig::startConfigPortal: portal failed or timed out");
+        ESP_LOGE(bcfgTAG, "ReciverConfig::startConfigPortal: portal failed or timed out");
     }
     
     if (audio_rs_class_ptr_)
     {
         bool reconnect_ok = audio_rs_class_ptr_ ->ReqNetworkReconnect();
-        Serial.printf("ReciverConfig::AUDIO_RS -> ReqNetworkReconnect:Returned %d\n", reconnect_ok ? 1 : 0);
+        ESP_LOGD(bcfgTAG, "ReciverConfig::AUDIO_RS -> ReqNetworkReconnect:Returned %d\n", reconnect_ok ? 1 : 0);
 
         if (reconnect_ok)
         {
@@ -264,8 +266,7 @@ void ReciverConfig::ConfButtonTaskLoop()
 
             if (dur_ms >= hold_ms)
             {
-                Serial.print("ReciverConfig::ConfButtonTaskLoopp::Press Duration : ");
-                Serial.println((unsigned)dur_ms);
+                ESP_LOGE(bcfgTAG, "ReciverConfig::ConfButtonTaskLoopp::Press Duration : %u", (unsigned)dur_ms);
 
                 ClearPrefs();
 
@@ -275,13 +276,13 @@ void ReciverConfig::ConfButtonTaskLoop()
                 }
                 else
                 {
-                    Serial.println("ReciverConfig: startConfigPortalCallback not set");
+                    ESP_LOGE(bcfgTAG, "ReciverConfig: startConfigPortalCallback not set");
                 }
                 vTaskDelay(pdMS_TO_TICKS(500));
             }
             else
             {
-                Serial.printf("ReciverConfig: short press (~%u ms) — ignored\n", (unsigned)dur_ms);
+                ESP_LOGE(bcfgTAG, "ReciverConfig: short press (~%u ms) — ignored\n", (unsigned)dur_ms);
             }
         } 
     }
@@ -328,7 +329,7 @@ bool ReciverConfig::AttachResetButton(
         }
         if (ok != pdPASS || ConfSRButtonTaskHandle_ == nullptr)
         {
-            Serial.println("ReciverConfig::AttachResetButton -> ConfButtonTaskLoop::Failed creation");
+            ESP_LOGE(bcfgTAG, "ReciverConfig::AttachResetButton -> ConfButtonTaskLoop::Failed creation");
             ConfSRButtonTaskHandle_ = nullptr;
             audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
             return false;
@@ -337,9 +338,7 @@ bool ReciverConfig::AttachResetButton(
     }
     pinMode(prefs_rst_open_portal_pin_, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_), ReciverConfig::confButtonIsrHandle, CHANGE);
-    Serial.print("ReciverConfig::AttachResetButton:: Button interrupt on pin ->");
-    Serial.print(prefs_rst_open_portal_pin_);
-    Serial.print("\n");
+    ESP_LOGI(bcfgTAG, "ReciverConfig::AttachResetButton:: Button interrupt on pin -> %u", (unsigned)prefs_rst_open_portal_pin_);
     return true;
     
 }
@@ -349,7 +348,7 @@ void ReciverConfig::ClearPrefs()
     prefs_.clear();
     prefs_.end();
     prefs_.begin(prefs_namespace_,false);
-    Serial.println("ReciverConfig::ClearPrefs::Preferances cleared");
+    ESP_LOGI(bcfgTAG, "ReciverConfig::ClearPrefs::Preferances cleared");
 }
 
 void ReciverConfig::DetachResetButton(TickType_t wait_ms)
@@ -388,7 +387,7 @@ void ReciverConfig::StopAndClean()
         detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
     }
     prefs_rst_open_portal_pin_ = 0xff;
-    Serial.println("ReciverConfig::StopAndClean: buttonTaskLoop exiting and cleaned up");
+    ESP_LOGI(bcfgTAG, "ReciverConfig::StopAndClean: buttonTaskLoop exiting and cleaned up");
     
 }
 

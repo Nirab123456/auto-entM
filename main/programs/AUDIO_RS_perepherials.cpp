@@ -4,6 +4,10 @@
 #include "headers/a_c_s.h"
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
+
+static const char *phpTAG = "AUDIO_RS_perepherials";
+
+
 void AUDIO_RS::I2SReadTrampoline(void* pv)
 {
     AUDIO_RS* self = static_cast<AUDIO_RS*>(pv);
@@ -54,17 +58,17 @@ void AUDIO_RS::nvsInitMain()
     esp_err_t nvs_err = nvs_flash_init();
     if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
-        Serial.println("AUDIO_RS::nvsInitMain:: Erasing & re-init");
+        ESP_LOGI(phpTAG, "AUDIO_RS::nvsInitMain:: Erasing & re-init");
         nvs_flash_erase();
         nvs_err = nvs_flash_init();
     }
 
     if (nvs_err != ESP_OK)
     {
-        Serial.printf("AUDIO_RS::nvsInitMain::NVS init failed; %d\n", (int)nvs_err);
+        ESP_LOGE(phpTAG, "AUDIO_RS::nvsInitMain::NVS init failed; %d\n", (int)nvs_err);
     }
     else
     {
-        Serial.printf("AUDIO_RS::nvsInitMain::Passed");
+        ESP_LOGI(phpTAG, "AUDIO_RS::nvsInitMain::Passed");
     }
 }

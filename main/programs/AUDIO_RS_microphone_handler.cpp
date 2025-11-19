@@ -3,6 +3,8 @@
 #include "headers/audio_read_send.h"
 #include "headers/a_c_s.h"
 
+static const char *mhTAG = "AUDIO_RS_microphone_handler";
+
 void AUDIO_RS::set_micfg(const MicrophoneConfig &cfg)
 {
     micfg_ = cfg;
@@ -11,7 +13,7 @@ void AUDIO_RS::set_micfg(const MicrophoneConfig &cfg)
     errbuf[0] = '\0';
     if (!micfg_.validate(errbuf))
     {
-        Serial.printf("AUDIO_RS::set_micfg:: %s\n", errbuf);
+        ESP_LOGE(mhTAG, "AUDIO_RS::set_micfg:: %s\n", errbuf);
         mic_configured_.store(false, std::memory_order_release);
     }
     else

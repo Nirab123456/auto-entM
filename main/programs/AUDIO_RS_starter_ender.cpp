@@ -4,6 +4,10 @@
 #include "headers/a_c_s.h"
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
+
+static const char *seTAG = "AUDIO_RS_starter_ender";
+
+
 AUDIO_RS::AUDIO_RS(
     std::span<uint32_t> i2s_buffer,
     std::span<uint32_t> ring_payload_flat,
@@ -173,7 +177,7 @@ void AUDIO_RS::stop_task(TaskHandle_t handle, TickType_t wait_ms)
     {
         if (!IsKnownHandle(handle))
         {
-            Serial.printf("Warning: stop_task() unknown handle %p — ignoring\n", (void*)handle);
+            ESP_LOGE(seTAG,  "Warning: stop_task() unknown handle %p — ignoring\n", (void*)handle);
             return;           
         }
         targets.push_back(handle);
@@ -225,7 +229,7 @@ bool AUDIO_RS::stopping_check_del(char* taskname)
 {
     if (stopping_.load(std::memory_order_acquire))
     {
-        Serial.printf("AUDIO_RS::%s stopping\n", taskname);
+        ESP_LOGI(seTAG,  "AUDIO_RS::%s stopping\n", taskname);
         return true;
     }
     return false;
@@ -246,33 +250,33 @@ void AUDIO_RS::set_ring_metadata_spans(
         size_t ring_slots = ring_payload_flat_.size() / frames_per_packet_;
         if (ring_slots == 0)
         {
-            Serial.println("AUDIO_RS::set_ring_metadata_spans: warning - computed ring_slots == 0");
+            ESP_LOGE(seTAG, "AUDIO_RS::set_ring_metadata_spans: warning - computed ring_slots == 0");
         }
         else
         {
             bool ok = true;
             if (ring_frames_span_.size() != ring_slots) {
-                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_frames_span size %u != ring_slots %u\n",
+                ESP_LOGE(seTAG, "AUDIO_RS::set_ring_metadata_spans: warning ring_frames_span size %u != ring_slots %u\n",
                               (unsigned)ring_frames_span_.size(), (unsigned)ring_slots);
                 ok = false;
             }
             if (ring_first_index_span_.size() != ring_slots) {
-                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_first_index_span size %u != ring_slots %u\n",
+                ESP_LOGE(seTAG, "AUDIO_RS::set_ring_metadata_spans: warning ring_first_index_span size %u != ring_slots %u\n",
                               (unsigned)ring_first_index_span_.size(), (unsigned)ring_slots);
                 ok = false;
             }
             if (ring_timestamp_span_.size() != ring_slots) {
-                Serial.printf("AUDIO_RS::set_ring_metadata_spans: warning ring_timestamp_span size %u != ring_slots %u\n",
+                ESP_LOGE(seTAG, "AUDIO_RS::set_ring_metadata_spans: warning ring_timestamp_span size %u != ring_slots %u\n",
                               (unsigned)ring_timestamp_span_.size(), (unsigned)ring_slots);
                 ok = false;
             }
             if (!ok)
             {
-                Serial.println("AUDIO_RS::set_ring_metadata_spans: metadata spans mismatch — please provide arrays with length == ring_slots");
+                ESP_LOGE(seTAG, "AUDIO_RS::set_ring_metadata_spans: metadata spans mismatch — please provide arrays with length == ring_slots");
             }
             else
             {
-                Serial.println("AUDIO_RS::set_ring_metadata_spans: metadata spans configured OK");
+                ESP_LOGI(seTAG, "AUDIO_RS::set_ring_metadata_spans: metadata spans configured OK");
             }
         }
     }
@@ -298,24 +302,24 @@ void AUDIO_RS::PauseNetworkStreaming()
             WiFi_tcp_client_ptr_->stop();
         }
     }
-    Serial.println("AUDIO_RS::PauseNetworkStreaming: consumer_ready cleared and tcp client stopped");    
+    ESP_LOGI(seTAG, "AUDIO_RS::PauseNetworkStreaming: consumer_ready cleared and tcp client stopped");    
 }
 
 bool AUDIO_RS::ReqNetworkReconnect()
 {
     if (!WiFi_tcp_client_ptr_) {
-        Serial.println("AUDIO_RS::ReqNetworkReconnect: no WiFiClient configured");
+        ESP_LOGE(seTAG, "AUDIO_RS::ReqNetworkReconnect: no WiFiClient configured");
         return false;
     }
     if (!recfg_ptr_) {
-        Serial.println("AUDIO_RS::ReqNetworkReconnect: no ReciverConfig pointer set");
+        ESP_LOGE(seTAG, "AUDIO_RS::ReqNetworkReconnect: no ReciverConfig pointer set");
         return false;
     }
 
     bool ok = recfg_ptr_->ConnectTOReciverIP(WiFi_tcp_client_ptr_);
     if (ok)
     {
-        Serial.println("AUDIO_RS::ReqNetworkReconnect:Reconnect successfull");
+        ESP_LOGI(seTAG, "AUDIO_RS::ReqNetworkReconnect:Reconnect successfull");
         if (consumer_ready_sp_)
         {
             consumer_ready_sp_->store(true,std::memory_order_release);
@@ -324,7 +328,7 @@ bool AUDIO_RS::ReqNetworkReconnect()
     }
     else
     {
-        Serial.println("AUDIO_RS::request_network_reconnect: reconnect failed");
+        ESP_LOGI(seTAG, "AUDIO_RS::request_network_reconnect: reconnect failed");
         return false;
     }
 }

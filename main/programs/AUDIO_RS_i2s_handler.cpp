@@ -4,17 +4,18 @@
 #include "headers/a_c_s.h"
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
+static const char *i2sTAG = "AUDIO_RS_i2s_handler";
 
 
 bool AUDIO_RS::initI2S()
 {
     if (!mic_configured_.load(std::memory_order_acquire))
     {
-        Serial.println("AUDIO_RS::initI2S::Mic not configured");
+        ESP_LOGE(i2sTAG,"AUDIO_RS::initI2S::Mic not configured");
     }
     if (frames_per_packet_ == 0)
     {
-        Serial.println("AUDIO_RS::initI2S::Frames per packet = 0");
+        ESP_LOGE(i2sTAG, "AUDIO_RS::initI2S::Frames per packet = 0");
     }
 
     if (i2s_installed_.load(std::memory_order_acquire))
@@ -54,7 +55,7 @@ bool AUDIO_RS::initI2S()
     esp_err_t err = i2s_new_channel(&chan_cfg, nullptr, &rx_chan_);
     if (err != ESP_OK || rx_chan_ == nullptr)
     {
-        Serial.printf("AUDIO_RS::initI2s->i2s_new_channel():: Creation failed with err->%d\n",(int)err);
+        ESP_LOGE(i2sTAG, "AUDIO_RS::initI2s->i2s_new_channel():: Creation failed with err->%d\n",(int)err);
         rx_chan_ = nullptr;
         return false;
     }
@@ -63,7 +64,7 @@ bool AUDIO_RS::initI2S()
 
     if (err != ESP_OK)
     {
-        Serial.printf("AUDIO_RS::initI2S-> i2s_channel_init_std_mode()::Failed =%d\n",(int)err);
+        ESP_LOGE(i2sTAG, "AUDIO_RS::initI2S-> i2s_channel_init_std_mode()::Failed =%d\n",(int)err);
         i2s_channel_disable(rx_chan_);
         i2s_del_channel(rx_chan_);
         rx_chan_ = nullptr;
@@ -74,7 +75,7 @@ bool AUDIO_RS::initI2S()
 
     if (err != ESP_OK)
     {
-        Serial.printf("AUDIO_RS::initI2S->i2s_channel_enable():Channel enable failed =%d\n",(int)err);
+        ESP_LOGE(i2sTAG, "AUDIO_RS::initI2S->i2s_channel_enable():Channel enable failed =%d\n",(int)err);
         i2s_channel_disable(rx_chan_);
         i2s_del_channel(rx_chan_);
         rx_chan_ = nullptr;
@@ -92,21 +93,21 @@ bool AUDIO_RS::initI2S()
 
         if (!i2s_queue_)
         {
-            Serial.println("AUDIO_RS::initI2S->i2s_queue_::Autocreate failed");
+            ESP_LOGE(i2sTAG, "AUDIO_RS::initI2S->i2s_queue_::Autocreate failed");
         }
         else
         {
-            Serial.println("AUDIO_RS::initI2S->i2s_queue_::Created");
+            ESP_LOGI(i2sTAG, "AUDIO_RS::initI2S->i2s_queue_::Created");
         }
     }
 
     if (network_slot_queue_ == nullptr)
     {
-        Serial.println("AUDIO_RS::initI2S ->network_slot_queue_:: nullptr");
+        ESP_LOGD(i2sTAG, "AUDIO_RS::initI2S ->network_slot_queue_:: nullptr");
     }
     
     i2s_installed_ = true;    
-    Serial.printf("I2S: initialized (dma_frame_num=%d dma_frame_len=%u)\n",
+    ESP_LOGI(i2sTAG, "I2S: initialized (dma_frame_num=%d dma_frame_len=%u)\n",
                   dma_frame_num, (unsigned)dma_frame_len);
     return true;
 }
@@ -132,7 +133,7 @@ void AUDIO_RS::deinitI2S()
     }
     
     i2s_installed_ = false;
-    Serial.println("AUDIO_RS::deinitI2S::Driver uninstalled");
+    ESP_LOGI(i2sTAG,"AUDIO_RS::deinitI2S::Driver uninstalled");
     
 }
 
@@ -145,19 +146,19 @@ void AUDIO_RS::I2SReaderLoop()
     }
     
     if (!i2s_installed_) {
-        Serial.println("I2SReaderLoop: I2S driver not installed");
+        ESP_LOGE(i2sTAG, "I2SReaderLoop: I2S driver not installed");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
     }
     if (i2s_buffer_.size() == 0) {
-        Serial.println("I2SReaderLoop: i2s buffer not configured");
+        ESP_LOGE(i2sTAG, "I2SReaderLoop: i2s buffer not configured");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
     }
     if (i2s_queue_ == nullptr) {
-        Serial.println("I2SReaderLoop: i2s_queue_ not set");
+        ESP_LOGE(i2sTAG, "I2SReaderLoop: i2s_queue_ not set");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
@@ -177,7 +178,7 @@ void AUDIO_RS::I2SReaderLoop()
         
         if (ulTaskNotifyTake(pdTRUE, 0) > 0)
         {
-            Serial.println("I2SReaderLoop:: Notified to exit");
+            ESP_LOGE(i2sTAG, "I2SReaderLoop:: Notified to exit");
             break;
         }
 
@@ -195,7 +196,7 @@ void AUDIO_RS::I2SReaderLoop()
             ++consecutive_read_failure;
             if ((consecutive_read_failure & 0xff) == 0)
             {
-                Serial.printf("I2SReaderLoop: read err=%d bytes=%d\n",(int)err, (unsigned)bytes_to_read);
+                ESP_LOGE(i2sTAG, "I2SReaderLoop: read err=%d bytes=%d\n",(int)err, (unsigned)bytes_to_read);
             }
             vTaskDelay(short_delay);
             continue;
@@ -224,7 +225,7 @@ void AUDIO_RS::I2SReaderLoop()
         
         taskYIELD();
     }
-    Serial.println("I2SReaderLoop:: Exiting");
+    ESP_LOGI(i2sTAG, "I2SReaderLoop:: Exiting");
     vTaskDelete(nullptr);    
 }
 
@@ -244,7 +245,7 @@ void AUDIO_RS::RingWriterLoop()
     }
     if (ring_payload_flat_.size() % frames_per_packet_ != 0)
     {
-        Serial.println("RingWriterLoop - ring size not multiple of frames_per_packet");
+        ESP_LOGE(i2sTAG, "RingWriterLoop - ring size not multiple of frames_per_packet");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;     

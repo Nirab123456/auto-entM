@@ -4,6 +4,7 @@
 #include "headers/a_c_s.h"
 #include "headers/ReciverConfig.h"   // <<--- add this (exact filename may differ)
 
+static const char *nhTAG = "AUDIO_RS_network_handler";
 
 void AUDIO_RS::set_WiFi_client_ptr(WiFiClient* client)
 {
@@ -91,7 +92,7 @@ void AUDIO_RS::NetworkTaskLoop()
 
     if (ring_payload_flat_.size() == 0 || frames_per_packet_ == 0)
     {
-        Serial.println("NetworkLoop: ring or frames not configured");
+        ESP_LOGE(nhTAG, "NetworkLoop: ring or frames not configured");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
@@ -100,7 +101,7 @@ void AUDIO_RS::NetworkTaskLoop()
     const size_t ring_slots = ring_payload_flat_.size() /frames_per_packet_;
     if (ring_slots == 0)
     {
-        Serial.println("NetworkTaskLoop : invalid ring_slots");
+        ESP_LOGE(nhTAG, "NetworkTaskLoop : invalid ring_slots");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
@@ -166,7 +167,7 @@ void AUDIO_RS::NetworkTaskLoop()
                         {
                             xTaskNotifyGive(network_writer_handle_);
                         }
-                        Serial.println("NetworkTaskLoop: connected to receiver (waking writer)");
+                        ESP_LOGE(nhTAG, "NetworkTaskLoop: connected to receiver (waking writer)");
                     }
                     else
                     {
@@ -193,7 +194,7 @@ void AUDIO_RS::NetworkTaskLoop()
 
         if (ring_frames_span_.size() != ring_slots)
         {
-            Serial.println("NetworkTaskLoop: ring_frames_span_ not configured");
+            ESP_LOGD(nhTAG, "NetworkTaskLoop: ring_frames_span_ not configured");
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
@@ -231,14 +232,14 @@ void AUDIO_RS::NetworkTaskLoop()
 
 void AUDIO_RS::NetworkDataWriterLoop()
 {
-    Serial.println("AUDIO_RS::NetworkDataWriterLoop");
+    ESP_LOGI(nhTAG, "AUDIO_RS::NetworkDataWriterLoop");
     if (stopping_check_del("NetworkDataWriterLoop"))
     {
         vTaskDelete(nullptr);
     }
 
     if (network_slot_queue_ == nullptr) {
-        Serial.println("AUDIO_RS::NetworkDataWriterLoop ->network_slot_queue_:: nullptr");
+        ESP_LOGE(nhTAG, "AUDIO_RS::NetworkDataWriterLoop ->network_slot_queue_:: nullptr");
         vTaskDelay(pdMS_TO_TICKS(100));
         vTaskDelete(nullptr);
         return;
@@ -382,7 +383,7 @@ void AUDIO_RS::NetworkDataWriterLoop()
         if (consumer_ready_sp_ && consumer_ready_sp_->load(std::memory_order_acquire))
         {
             consumer_ready_sp_->store(true, std::memory_order_release);
-            Serial.println("NetworkDataWriterLoop: consumer_ready set true after successful write");
+            ESP_LOGI(nhTAG, "NetworkDataWriterLoop: consumer_ready set true after successful write");
         }
 
         

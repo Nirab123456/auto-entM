@@ -1,6 +1,9 @@
 #include "headers/ReciverConfig.h"
 
 
+static const char *rcTAG = "AUDIO_RS_ReciverConfig";
+
+
 TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 
 ReciverConfig::ReciverConfig(const char* prefs_namespace)
@@ -27,13 +30,13 @@ void ReciverConfig::begin()
     // If we already have a valid receiver configuration, nothing to do.
     // If you want to always show the portal regardless, remove the isValid() check.
     if (isValid()) {
-        Serial.printf("ReciverConfig::begin() - already configured: %s:%u\n",
+        ESP_LOGE(rcTAG, "ReciverConfig::begin() - already configured: %s:%u\n",
                       ip_.toString().c_str(), (unsigned)port_);
         return;
     }
 
     // If not valid, launch WiFiManager captive portal to configure WiFi + PC IP/PORT.
-    Serial.println("ReciverConfig::begin() - launching WiFiManager portal to configure WiFi and receiver IP/port");
+    ESP_LOGI(rcTAG,  "ReciverConfig::begin() - launching WiFiManager portal to configure WiFi and receiver IP/port");
 
     // Prepare placeholders with previously-saved values (if any)
     char ip_buffer[40] = {0};
@@ -49,7 +52,7 @@ void ReciverConfig::load()
     std::lock_guard<std::mutex> lock(mu_);
     if (!prefs_.begin(prefs_namespace_, true)) {
 
-        Serial.printf("ReciverConfig::load: prefs.begin(%s) failed (read-only)",prefs_namespace_);
+        ESP_LOGE(rcTAG, "ReciverConfig::load: prefs.begin(%s) failed (read-only)",prefs_namespace_);
         // keep current ip_/port_ as-is (likely 0)
         return;
     }    
@@ -83,7 +86,7 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
     std::lock_guard<std::mutex> lock(mu_);
     if (!(prefs_.begin(prefs_namespace_, false)))
     {
-        Serial.println("ReciverConfig::save::prefs.begin() failed!");
+        ESP_LOGE(rcTAG,  "ReciverConfig::save::prefs.begin() failed!");
         return;
     }
     
@@ -194,7 +197,7 @@ bool ReciverConfig::ConnectTOReciverIP(WiFiClient* WiFi_TCPClient)
     if (!connection_ok || !WiFi_TCPClient->connected())
     {
         WiFi_TCPClient->stop();
-        Serial.println("ReciverConfig::ConnectTOReciverIP::Connection failed");
+        ESP_LOGE(rcTAG,  "ReciverConfig::ConnectTOReciverIP::Connection failed");
         return false;
     }
     bool still_same = false;
@@ -205,16 +208,14 @@ bool ReciverConfig::ConnectTOReciverIP(WiFiClient* WiFi_TCPClient)
     if (!still_same)
     {
         WiFi_TCPClient->stop();
-        Serial.println("ReciverConfig::ConnectTOReciverIP::Reciver configuration changed ip or port::Closing");
+        ESP_LOGE(rcTAG,  "ReciverConfig::ConnectTOReciverIP::Reciver configuration changed ip or port::Closing");
         return false;
     }
     
     WiFi_TCPClient->setNoDelay(true);
 
-    Serial.print("ReciverConfig::ConnectTOReciverIP::Reciver IP: ");
-    Serial.print(ip_copy.toString());
-    Serial.print(":");
-    Serial.println(port_copy);
+
+    ESP_LOGI(rcTAG, "ReciverConfig::ConnectTOReciverIP::Reciver IP: %s : %i",(ip_copy.toString()),static_cast<int>(port_copy));
 
     return true; 
 }
