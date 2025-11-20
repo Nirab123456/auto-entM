@@ -16,7 +16,13 @@ class ReciverConfig {
         uint8_t prefs_rst_open_portal_pin_ = 0xff;
         TickType_t debounce_ticks_ = pdMS_TO_TICKS(20);
         uint32_t hold_ms_ = 800;
-        static void IRAM_ATTR confButtonIsrHandle();
+
+        // have to impliment on cpp 
+        bool confRSTButton_configured_{false};
+        bool configure_ConfRSTButton(uint8_t pin);
+
+
+        static void IRAM_ATTR confButtonIsrHandle(void* arg);
         void ConfButtonTaskLoop();
         bool GSVIpPort(
             char* ip_buffer,

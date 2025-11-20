@@ -12,7 +12,7 @@ constexpr uint8_t USER_DMA_BUFFER_COUNT = 6;
 constexpr uint8_t USER_PIN_CLK = 7;
 constexpr uint8_t USER_PIN_WS = 15;
 constexpr uint8_t USER_PIN_SD = 16;
-constexpr uint8_t RESET_WIFI_BUTTON_PIN = 10;
+constexpr uint8_t RESET_WIFI_BUTTON_PIN = 1;
 constexpr size_t FRAMES_PER_PACKET = 1024;
 constexpr size_t RING_SIZE = 64;
 static_assert((RING_SIZE & (RING_SIZE - 1)) == 0, "Ring size should be power of 2");

@@ -323,7 +323,7 @@ void AUDIO_RS::NetworkDataWriterLoop()
 
         std::vector<uint8_t> header_copy;
         size_t header_len_local = 0;
-        header_len_local = header_size_.load(std::memory_order_acq_rel);
+        header_len_local = header_size_.load(std::memory_order_acquire);
         {
             std::lock_guard<std::mutex> lk(header_mu_);
             if (header_len_local > 0)

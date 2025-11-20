@@ -5,8 +5,14 @@ static const char *bcfgTAG = "ARS_ReciverConfig_buttoncfg";
 TaskHandle_t ReciverConfig::ConfSRButtonTaskHandle_ = nullptr;
 
 //ISR
-void IRAM_ATTR ReciverConfig::confButtonIsrHandle()
+void IRAM_ATTR ReciverConfig::confButtonIsrHandle(void* arg)
 {
+    ReciverConfig* self = static_cast<ReciverConfig*>(arg);
+    if (!self)
+    {
+        return;
+    }
+    
     BaseType_t woken = pdFALSE;
     if (ConfSRButtonTaskHandle_)
     {
@@ -223,76 +229,116 @@ void ReciverConfig::ConfRstButtonTrampoline(void* pv)
     self->ConfButtonTaskLoop();
 }
 
+// --- ConfButtonTaskLoop (fixed units & safe launch of portal) ---
 void ReciverConfig::ConfButtonTaskLoop()
 {
     TickType_t press_ticks = 0;
     TickType_t last_edge_tick = 0;
     uint8_t pin = prefs_rst_open_portal_pin_;
     const TickType_t debounce_ticks = debounce_ticks_;
-    uint32_t hold_ms = hold_ms_;
+    const TickType_t hold_ticks = pdMS_TO_TICKS(hold_ms_); // convert ms -> ticks
 
-    for (;;)
-    {
+    for (;;) {
+        // wait for ISR notification
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (stopping_.load(std::memory_order_acquire))
-        {
-            break;
-        }
+        if (stopping_.load(std::memory_order_acquire)) break;
+
         TickType_t now = xTaskGetTickCount();
 
-        if ((now - last_edge_tick) < debounce_ticks)
-        {
+        if ((now - last_edge_tick) < debounce_ticks) {
             last_edge_tick = now;
             continue;
         }
-        
         last_edge_tick = now;
-        int level = digitalRead(pin);
-        if (level == LOW)
-        {
-            if (press_ticks == 0)
-            {
+
+        int level = gpio_get_level(static_cast<gpio_num_t>(pin)); // prefer gpio_get_level for IDF
+        if (level == 0) { // pressed (active low)
+            if (press_ticks == 0) {
                 press_ticks = now;
             }
+            // wait for release event (task will be notified again on any edge)
             continue;
-        }
-        else
-        {
-            if (press_ticks == 0)
-            {
+        } else { // released (level == 1)
+            if (press_ticks == 0) {
+                // spurious release without matching press
                 continue;
             }
-            TickType_t dur_ms = now - press_ticks;
+            TickType_t dur_ticks = now - press_ticks;
             press_ticks = 0;
 
-            if (dur_ms >= hold_ms)
-            {
-                ESP_LOGE(bcfgTAG, "ReciverConfig::ConfButtonTaskLoopp::Press Duration : %u", (unsigned)dur_ms);
+            if (dur_ticks >= hold_ticks) {
+                ESP_LOGI(bcfgTAG, "Button long press: %u ms", (unsigned)(dur_ticks * portTICK_PERIOD_MS));
+                clear();
 
-                ClearPrefs();
-
-                if (startConfigPortalCb_)
-                {
+                // prefer launching the portal in a separate task to avoid blocking this task
+                if (startConfigPortalCb_) {
+                    // if callback launches portal in separate task that's ideal
                     startConfigPortalCb_();
+                } else {
+                    // launch StartConfigPortal in its own task
+                    TaskHandle_t th = nullptr;
+                    BaseType_t res = xTaskCreate(
+                        ReciverConfig::StartConfPortalTrampoline,
+                        "StartConfPortal",
+                        8192,
+                        this,
+                        5,
+                        &th
+                    );
+                    if (res != pdPASS) {
+                        ESP_LOGE(bcfgTAG, "Failed to create StartConfPortal task");
+                    }
                 }
-                else
-                {
-                    ESP_LOGE(bcfgTAG, "ReciverConfig: startConfigPortalCallback not set");
-                }
-                vTaskDelay(pdMS_TO_TICKS(500));
+                vTaskDelay(pdMS_TO_TICKS(500)); // allow system to settle
+            } else {
+                ESP_LOGI(bcfgTAG, "Short press (~%u ms) ignored", (unsigned)(dur_ticks * portTICK_PERIOD_MS));
             }
-            else
-            {
-                ESP_LOGE(bcfgTAG, "ReciverConfig: short press (~%u ms) — ignored\n", (unsigned)dur_ms);
-            }
-        } 
+        }
     }
+
     StopAndClean();
     vTaskDelete(nullptr);
-
 }
 
 
+bool ReciverConfig::configure_ConfRSTButton(uint8_t pin)
+{
+    // install ISR service once
+    esp_err_t err = gpio_install_isr_service(0);
+    if (err == ESP_ERR_INVALID_STATE) {
+        // already installed - ok
+    } else if (err != ESP_OK) {
+        ESP_LOGE(bcfgTAG, "gpio_install_isr_service failed: %d", err);
+        return false;
+    }
+
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;   // <- any edge (both press and release)
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = (1ULL << static_cast<uint32_t>(pin));
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+
+    esp_err_t r = gpio_config(&io_conf);
+    if (r != ESP_OK) {
+        ESP_LOGE(bcfgTAG, "gpio_config failed: %d", r);
+        return false;
+    }
+
+    // Add ISR handler, pass 'this' as the arg
+    esp_err_t e = gpio_isr_handler_add(static_cast<gpio_num_t>(pin), ReciverConfig::confButtonIsrHandle, this);
+    if (e != ESP_OK) {
+        ESP_LOGE(bcfgTAG, "gpio_isr_handler_add failed: %d", e);
+        return false;
+    }
+
+    confRSTButton_configured_ = true;
+    ESP_LOGI(bcfgTAG, "Attached ISR for pin %d", (int)pin);
+    return true;
+}
+
+
+// --- AttachResetButton ---
 bool ReciverConfig::AttachResetButton(
     uint8_t pin,
     TickType_t debounce_ms,
@@ -303,21 +349,24 @@ bool ReciverConfig::AttachResetButton(
     void* arg
 )
 {
-    
-    if (pin == 0xff)
-    {
+    if (pin == 0xff) {
         return false;
     }
-    prefs_rst_open_portal_pin_ = pin; 
-    if (ConfSRButtonTaskHandle_ == nullptr)
-    {
+
+    // store pin so other functions can use it
+    prefs_rst_open_portal_pin_ = pin;
+
+    // create task if not already
+    if (ConfSRButtonTaskHandle_ == nullptr) {
         BaseType_t ok = pdFAIL;
-        if (!audio_rs_class_ptr_)
-        {
-            ok = start_task_fn_ptr();//set parameters in header and use the function   
-        }
-        else
-        {
+        if (!audio_rs_class_ptr_) {
+            if (start_task_fn_ptr) {
+                ok = start_task_fn_ptr() ? pdPASS : pdFAIL;
+            } else {
+                ESP_LOGE(bcfgTAG, "No start_task_fn_ptr and no audio_rs_class_ptr_ - cannot create ConfButtonTask");
+                return false;
+            }
+        } else {
             ok = audio_rs_class_ptr_->start_task(
                 "ConfButtonTaskLoop",
                 task_stack_bytes,
@@ -325,62 +374,62 @@ bool ReciverConfig::AttachResetButton(
                 core,
                 ConfRstButtonTrampoline,
                 this,
-                &ConfSRButtonTaskHandle_  
-            );
+                &ConfSRButtonTaskHandle_
+            ) ? pdPASS : pdFAIL;
         }
-        if (ok != pdPASS || ConfSRButtonTaskHandle_ == nullptr)
-        {
-            ESP_LOGE(bcfgTAG, "ReciverConfig::AttachResetButton -> ConfButtonTaskLoop::Failed creation");
+        if (ok != pdPASS || ConfSRButtonTaskHandle_ == nullptr) {
+            ESP_LOGE(bcfgTAG, "ConfButtonTaskLoop: Failed creation");
             ConfSRButtonTaskHandle_ = nullptr;
-            audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
+            if (audio_rs_class_ptr_) audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
             return false;
         }
-        audio_rs_class_ptr_->conf_portal_rst_button_handler_ = ConfSRButtonTaskHandle_;
+        if (audio_rs_class_ptr_) audio_rs_class_ptr_->conf_portal_rst_button_handler_ = ConfSRButtonTaskHandle_;
     }
-    pinMode(prefs_rst_open_portal_pin_, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_), ReciverConfig::confButtonIsrHandle, FALLING);
-    ESP_LOGI(bcfgTAG, "ReciverConfig::AttachResetButton:: Button interrupt on pin -> %u", (unsigned)prefs_rst_open_portal_pin_);
+
+    // configure gpio/ISR once
+    if (!confRSTButton_configured_) {
+        bool ok = configure_ConfRSTButton(pin);
+        if (!ok) {
+            ESP_LOGE(bcfgTAG, "configure_ConfRSTButton failed");
+            return false;
+        }
+    } else {
+        ESP_LOGI(bcfgTAG, "AttachResetButton: already configured");
+    }
+
     return true;
-    
 }
 
-void ReciverConfig::ClearPrefs()
-{
-    prefs_.clear();
-    prefs_.end();
-    prefs_.begin(prefs_namespace_,false);
-    ESP_LOGI(bcfgTAG, "ReciverConfig::ClearPrefs::Preferances cleared");
-}
-
+// --- DetachResetButton (cleanup) ---
 void ReciverConfig::DetachResetButton(TickType_t wait_ms)
 {
-    stopping_.store(true,std::memory_order_release);
-    if (prefs_rst_open_portal_pin_ != 0xff)
-    {
-        detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
+    stopping_.store(true, std::memory_order_release);
+
+    if (prefs_rst_open_portal_pin_ != 0xff) {
+        // remove ISR handler added with gpio_isr_handler_add
+        esp_err_t r = gpio_isr_handler_remove(static_cast<gpio_num_t>(prefs_rst_open_portal_pin_));
+        if (r == ESP_OK) {
+            ESP_LOGD(bcfgTAG, "gpio_isr_handler_remove succeeded");
+        } else {
+            ESP_LOGE(bcfgTAG, "gpio_isr_handler_remove failed: %d", r);
+        }
     }
-    if (ConfSRButtonTaskHandle_)
-    {
+
+    if (ConfSRButtonTaskHandle_) {
         xTaskNotifyGive(ConfSRButtonTaskHandle_);
         const TickType_t start = xTaskGetTickCount();
         const TickType_t wait_ticks = wait_ms;
-        while (wait_ms != portMAX_DELAY && (xTaskGetTickCount() - start) < wait_ticks)
-        {
-            if (eTaskGetState(ConfSRButtonTaskHandle_) == eDeleted)
-            {
-                break;
-            }
+        while (wait_ms != portMAX_DELAY && (xTaskGetTickCount() - start) < wait_ticks) {
+            if (eTaskGetState(ConfSRButtonTaskHandle_) == eDeleted) break;
             vTaskDelay(pdMS_TO_TICKS(10));
         }
         ConfSRButtonTaskHandle_ = nullptr;
-        if (audio_rs_class_ptr_->conf_portal_rst_button_handler_)
-        {
+        if (audio_rs_class_ptr_ && audio_rs_class_ptr_->conf_portal_rst_button_handler_) {
             audio_rs_class_ptr_->conf_portal_rst_button_handler_ = nullptr;
         }
     }
-    stopping_.store(false,std::memory_order_release);
+    stopping_.store(false, std::memory_order_release);
 }
-
 void ReciverConfig::StopAndClean()
 {
     if (prefs_rst_open_portal_pin_ != 0xff)
