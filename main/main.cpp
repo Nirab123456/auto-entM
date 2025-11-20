@@ -37,11 +37,14 @@ static AUDIO_RS audio_rs_instance;
 
 static WiFiClient WiFi_client;
 
+static QueueHandle_t net_slot_que = nullptr;
+
 MicrophoneConfig miccfg;
 
 static void startup_task(void* pv)
 {
     ESP_LOGI(mainTAG, "startup_task: begin");
+
 
     // Serial can still be used, but prefer ESP_LOGI for early logs
     // 1) PSRAM free already printed earlier in app_init, but re-log
@@ -113,6 +116,25 @@ static void startup_task(void* pv)
     recivercfg.begin();
     recivercfg.AttachResetButton(RESET_WIFI_BUTTON_PIN);
     recivercfg.StartConfigPortal();
+
+    net_slot_que = xQueueCreate(16, sizeof(size_t));
+    if (net_slot_que)
+    {
+        if(audio_rs_instance.set_network_slot_queue(net_slot_que))
+        {
+            ESP_LOGI(mainTAG, "AUDIO_RS->set_network_slot_queue:set");
+        }
+        else
+        {
+            ESP_LOGE(mainTAG, "AUDIO_RS->set_network_slot_queue :Failed");
+        }
+    }
+    else
+    {
+        ESP_LOGE(mainTAG, "main->net_slot_que:creation failed");
+    }
+    
+    
 
     // init I2S and verify
     if (!audio_rs_instance.initI2S()) {

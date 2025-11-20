@@ -193,6 +193,7 @@ class AUDIO_RS
         void set_clear_ring_and_reset_indices_fn(std::function<void()> fn);
 
         void set_micfg(const MicrophoneConfig &cfg);
+        bool set_network_slot_queue(QueueHandle_t q);
 
         // -----------------------
         // task/trampoline helpers

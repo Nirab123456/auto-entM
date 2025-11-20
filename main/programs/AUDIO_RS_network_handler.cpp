@@ -6,6 +6,16 @@
 
 static const char *nhTAG = "AUDIO_RS_network_handler";
 
+bool AUDIO_RS::set_network_slot_queue(QueueHandle_t q)
+{
+    if (q != nullptr)
+    {
+        network_slot_queue_ = q;
+        return true;
+    }
+    return false;
+}
+
 void AUDIO_RS::set_WiFi_client_ptr(WiFiClient* client)
 {
     if (client)
