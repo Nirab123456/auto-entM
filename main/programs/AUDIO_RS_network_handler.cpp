@@ -311,7 +311,6 @@ void AUDIO_RS::NetworkDataWriterLoop()
         }
 
         uint32_t seq = sequence_counter_ ? sequence_counter_->fetch_add(1, std::memory_order_relaxed) : 0;
-
         if (write_tcp_header_fn_)
         {
             //backbone for cross communication
@@ -322,9 +321,18 @@ void AUDIO_RS::NetworkDataWriterLoop()
             WriteTCPHeader(seq, first_index, ts, frames);
         }
 
-        uint8_t* header_ptr = header_buffer_.data();
-        size_t header_len = header_size_;
+        std::vector<uint8_t> header_copy;
+        size_t header_len_local = 0;
+        header_len_local = header_size_.load(std::memory_order_acq_rel);
+        {
+            std::lock_guard<std::mutex> lk(header_mu_);
+            if (header_len_local > 0)
+            {
+                header_copy.assign(header_buffer_.begin(), header_buffer_.begin() + header_len_local);
+            }
+        }
 
+        uint8_t* header_ptr = header_copy.empty() ? nullptr : header_copy.data();
         uint32_t* row_ptr = ring_payload_flat_.data() + slot * frames_per_packet_;
         uint8_t* payload_ptr = reinterpret_cast<uint8_t*>(row_ptr);
         size_t payload_len = static_cast<size_t>(frames) * sizeof(uint32_t);
@@ -354,7 +362,7 @@ void AUDIO_RS::NetworkDataWriterLoop()
         if (recfg_ptr_)
         {
             //header
-            write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, header_len, 4000, 3, 1400);
+            write_ok = recfg_ptr_->TCPWriteAll(WiFi_tcp_client_ptr_, header_ptr, header_len_local, 4000, 3, 1400);
             success = write_ok;
             if (success)
             {
@@ -476,9 +484,9 @@ void AUDIO_RS::WriteTCPHeader(
         hdrptr[off + 0] = static_cast<uint8_t>(FORMAT_INT32_LEFT24_ & 0xff);
         hdrptr[off + 1] = static_cast<uint8_t>((FORMAT_INT32_LEFT24_ >> SIZE_OF_A_BYTE_IN_BITS) & 0xff);
         off +=2;
-        header_size_ = off;
+        header_size_.store(off, std::memory_order_release);
 
-        ESP_LOGD(nhTAG,"AUDIO_RS::WriteTCPHeader:Wrritten = %i bytes",(int)header_size_);
+        ESP_LOGD(nhTAG,"AUDIO_RS::WriteTCPHeader:Wrritten = %i bytes",(int)off);
     }
 
     
@@ -487,7 +495,7 @@ void AUDIO_RS::WriteTCPHeader(
 void AUDIO_RS::set_header_buffer_size(size_t n)
 {
     std::lock_guard<std::mutex> lk(header_mu_);
-    header_size_ = n;
+    header_size_.store(n, std::memory_order_release);
     if (n == 0)
     {
         header_buffer_.clear();

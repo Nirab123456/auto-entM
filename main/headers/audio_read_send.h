@@ -87,7 +87,7 @@ class AUDIO_RS
 
         // header buffer and writer callback
         std::vector<uint8_t>                        header_buffer_;
-        size_t                                       header_size_{0};
+        std::atomic<size_t>                         header_size_{0};
         std::mutex          header_mu_;
         std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> write_tcp_header_fn_{nullptr};
 

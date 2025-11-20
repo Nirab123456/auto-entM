@@ -1,7 +1,7 @@
 #include "headers/psramalloc.h"
 #include "main_helper.h"
 #include <stdlib.h>
-
+#include "task_prio_core_stack.h"
 
 static const char *mainTAG = "main_AUDIO_RS";
 
@@ -101,6 +101,7 @@ static void startup_task(void* pv)
     audio_rs_instance.set_ring_tail(g_ring_tail);
     audio_rs_instance.set_abs_idx(g_abs_idx);
     audio_rs_instance.set_sequence_counter(g_sequence_counter);
+    audio_rs_instance.set_header_buffer_size(DEFAULT_HEADER_SIZE);
     ESP_LOGI(mainTAG, "startup_task: shared pointers set");
 
     audio_rs_instance.set_micfg(miccfg);
