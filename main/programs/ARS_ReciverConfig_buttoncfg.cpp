@@ -181,18 +181,9 @@ bool ReciverConfig::StartConfigPortal(bool force_start_conf_portal, const char* 
     {
         std::lock_guard<std::mutex> lock(mu_);
         prefs_.begin(prefs_namespace_,true);
-        String SavedIP = prefs_.getString("pc_ip","");
-        String SavedPort = prefs_.getString("pc_port","");
+        String SavedIP = prefs_.getString(PREFS_IP_ID,"");
+        String SavedPort = prefs_.getString(PREFS_PORT_ID,"");
         prefs_.end();
-        if (SavedIP.length() > 0)
-        {
-            SavedIP.toCharArray(ip_buffer,sizeof(ip_buffer));
-        }
-        
-        if (SavedPort.length() > 0)
-        {
-            SavedPort.toCharArray(port_buffer,sizeof(port_buffer));
-        }
     }
 
     if (ok) {

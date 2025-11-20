@@ -56,7 +56,7 @@ void ReciverConfig::load()
         return;
     }    
     String saved_ip = prefs_.getString(PREFS_IP_ID,"");
-    uint32_t saved_port_u = prefs_.getUInt(PREFS_IP_LABEL, 0);
+    String saved_port = prefs_.getString(PREFS_IP_LABEL, "");
     prefs_.end();
 
     IPAddress tmp;
@@ -69,14 +69,16 @@ void ReciverConfig::load()
         ip_ = IPAddress(0,0,0,0);
     }
 
-    if (saved_port_u > 0 && saved_port_u < 65535)
+    long p = atol(saved_port.c_str());
+    if (p > 0 && p <= 65525)
     {
-        port_ = static_cast<uint16_t>(saved_port_u);
+        port_ = static_cast<uint16_t>(p);
     }
     else
     {
         port_ = 0;
     }
+
 }
 
 
@@ -119,7 +121,7 @@ void ReciverConfig::save(const char* ip_str, uint16_t port)
     if (port > 0 && port <= 65535)
     {
         port_ = port;
-        prefs_.putUShort(PREFS_PORT_ID, port_);
+        prefs_.putString(PREFS_PORT_ID, (String)(port_));
     }
     
    prefs_.end(); 
