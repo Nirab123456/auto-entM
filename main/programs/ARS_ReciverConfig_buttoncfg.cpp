@@ -296,7 +296,7 @@ void ReciverConfig::ConfButtonTaskLoop()
         }
     }
 
-    StopAndClean();
+    DetachResetButton();
     vTaskDelete(nullptr);
 }
 
@@ -430,16 +430,6 @@ void ReciverConfig::DetachResetButton(TickType_t wait_ms)
     }
     stopping_.store(false, std::memory_order_release);
 }
-void ReciverConfig::StopAndClean()
-{
-    if (prefs_rst_open_portal_pin_ != 0xff)
-    {
-        detachInterrupt(digitalPinToInterrupt(prefs_rst_open_portal_pin_));
-    }
-    prefs_rst_open_portal_pin_ = 0xff;
-    ESP_LOGI(bcfgTAG, "ReciverConfig::StopAndClean: buttonTaskLoop exiting and cleaned up");
-    
-}
 
 
 void ReciverConfig::setStartConfPortalCallback(std::function<void()>cb)
@@ -455,5 +445,5 @@ void ReciverConfig::StartConfPortalTrampoline(void* pv)
         vTaskDelete(nullptr);
         return;
     }
-    self -> StartConfigPortal();
+    self -> StartConfigPortal(true);
 }
