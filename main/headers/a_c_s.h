@@ -1,5 +1,4 @@
 #pragma once
-#include <Arduino.h>
 
 inline constexpr uint8_t NUMBERS_OF_CHANNELS = 1;
 inline constexpr uint8_t BYTES_PER_SAMPLE   = 4;

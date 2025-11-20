@@ -414,32 +414,86 @@ void AUDIO_RS::WriteTCPHeader(
     uint16_t number_of_frames
 )
 {
-    header_buffer_[0] = (uint8_t)(HEADER_MAGIC_ & 0xff);
-    header_buffer_[1] = (uint8_t)((HEADER_MAGIC_ >> 8) & 0xff);
-    header_buffer_[2] = (uint8_t)((HEADER_MAGIC_ >> 16) & 0xff);
-    header_buffer_[3] = (uint8_t)((HEADER_MAGIC_ >> 24) & 0xff);
-    for (size_t i = 0; i < MIN_BYTES_READ; i++)
+    constexpr size_t THIS_HEADER_SIZE = 34;
+    size_t required = std::max<size_t>(THIS_HEADER_SIZE, 0);
     {
-        header_buffer_[4+i] = (uint8_t)((seq >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff));
+        std::lock_guard<std::mutex> lk(header_mu_);
+        if (header_buffer_.size() < required)
+        {
+            header_buffer_.assign(required,0);
+        }
+
+        uint8_t* hdrptr = header_buffer_.data();
+        size_t off = 0;
+        uint32_t magic = HEADER_MAGIC_;
+        hdrptr[off + 0] = (uint8_t) (magic & 0xff);
+        hdrptr[off + 1] = (uint8_t) ((magic >> 8) & 0xff);
+        hdrptr[off + 2] = (uint8_t) ((magic >> 16) & 0xff);
+        hdrptr[off + 3] = (uint8_t) ((magic >> 24) & 0xff); 
+        off += MIN_BYTES_READ;
+        for (size_t i = 0; i < MIN_BYTES_READ; i++)
+        {
+            hdrptr[off + i] = static_cast<uint8_t>((seq >> SIZE_OF_A_BYTE_IN_BITS*i) & 0xff);
+        }
+        off += MIN_BYTES_READ;
+        for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
+        {
+            hdrptr[off + i] = static_cast<uint8_t>((first_sample_index >> SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+        }
+        off += (MIN_BYTES_READ * 2);
+        for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
+        {
+            hdrptr[off + i] = static_cast<uint8_t>((timestamp_us >> SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+        }
+        off += (MIN_BYTES_READ * 2);
+        hdrptr[off + 0] = static_cast<uint8_t>(number_of_frames & 0xff);
+        hdrptr[off + 1] = static_cast<uint8_t>((number_of_frames >> 8) & 0xff);
+        off += 2; //off += sizeof(number_of_frames) / SIZE_OF_A_BYTE_IN_BITS;
+        uint8_t cc = 1;
+        if (CHANNEL_COUNT_)
+        {
+            cc = static_cast<uint8_t>(CHANNEL_COUNT_->load(std::memory_order_acquire));
+        }
+        hdrptr[off++] = cc;
+
+        uint8_t slot_width_bytes = (micfg_.SlotBitWidth_ > 0) ? static_cast<uint8_t>(micfg_.SlotBitWidth_ / SIZE_OF_A_BYTE_IN_BITS) : 3; // have to change magic number 3
+        hdrptr[off++] = slot_width_bytes;
+
+        uint32_t sample_rate = 0;
+        if (micfg_.i2s_configuration.clk_cfg.sample_rate_hz > 0)
+        {
+            sample_rate = micfg_.i2s_configuration.clk_cfg.sample_rate_hz;
+        }
+        else
+        {
+            sample_rate = 48000;
+        }
+        for (size_t i = 0; i < MIN_BYTES_READ; i++)
+        {
+            hdrptr[off + i] = static_cast<uint8_t>((sample_rate >> SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
+        }
+        off += MIN_BYTES_READ;
+        hdrptr[off + 0] = static_cast<uint8_t>(FORMAT_INT32_LEFT24_ & 0xff);
+        hdrptr[off + 1] = static_cast<uint8_t>((FORMAT_INT32_LEFT24_ >> SIZE_OF_A_BYTE_IN_BITS) & 0xff);
+        off +=2;
+        header_size_ = off;
+
+        ESP_LOGD(nhTAG,"AUDIO_RS::WriteTCPHeader:Wrritten = %i bytes",(int)header_size_);
     }
-    for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
-    {
-        header_buffer_[8+i] = (uint8_t)((first_sample_index >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff));
-    }
-    for (size_t i = 0; i < MIN_BYTES_READ * 2; i++)
-    {
-        header_buffer_[16+i] = (uint8_t)(timestamp_us >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
-    }
-    header_buffer_[24] = (uint8_t)(number_of_frames & 0xff);
-    header_buffer_[25] = (uint8_t)((number_of_frames >> 8) & 0xff);
-    header_buffer_[26] = (uint8_t)CHANNEL_COUNT_->load(std::memory_order_acquire);
-    header_buffer_[27] = (uint8_t)(static_cast<std::size_t>(micfg_.SlotBitWidth_ / SIZE_OF_A_BYTE_IN_BITS));
-    for (size_t i = 0; i < MIN_BYTES_READ; i++)
-    {
-        header_buffer_[28+i] = (uint8_t)(static_cast<uint32_t>(micfg_.i2s_configuration.clk_cfg.sample_rate_hz) >> (SIZE_OF_A_BYTE_IN_BITS * i) & 0xff);
-    }
-    //finish header  
-    header_buffer_[32] = (uint8_t)(FORMAT_INT32_LEFT24_ & 0xff);  
-    header_buffer_[33] = (uint8_t)((FORMAT_INT32_LEFT24_ >> 8) & 0xff);
+
     
+}
+
+void AUDIO_RS::set_header_buffer_size(size_t n)
+{
+    std::lock_guard<std::mutex> lk(header_mu_);
+    header_size_ = n;
+    if (n == 0)
+    {
+        header_buffer_.clear();
+        header_buffer_.shrink_to_fit();
+    }else
+    {
+        header_buffer_.assign(n, 0);
+    }
 }

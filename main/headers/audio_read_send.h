@@ -1,5 +1,4 @@
 #pragma once 
-#include <Arduino.h>
 #include <span>
 #include <atomic>
 #include <memory>
@@ -89,6 +88,7 @@ class AUDIO_RS
         // header buffer and writer callback
         std::vector<uint8_t>                        header_buffer_;
         size_t                                       header_size_{0};
+        std::mutex          header_mu_;
         std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> write_tcp_header_fn_{nullptr};
 
         // network slot queue and writer task handle
@@ -186,7 +186,7 @@ class AUDIO_RS
         void set_tcp_client_connected_fn(std::function<bool()> connected_fn);
 
         // header buffer and header writer callback
-        void set_header_buffer_size(size_t n);
+        void set_header_buffer_size(size_t n = 0);
         void set_write_tcp_header_fn(std::function<void(uint32_t, uint64_t, uint64_t, uint16_t)> fn);
 
         // clear/reset callback
