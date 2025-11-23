@@ -457,12 +457,7 @@ void AUDIO_RS::WriteTCPHeader(
         hdrptr[off + 0] = static_cast<uint8_t>(number_of_frames & 0xff);
         hdrptr[off + 1] = static_cast<uint8_t>((number_of_frames >> 8) & 0xff);
         off += 2; //off += sizeof(number_of_frames) / SIZE_OF_A_BYTE_IN_BITS;
-        uint8_t cc = 1;
-        if (CHANNEL_COUNT_)
-        {
-            cc = static_cast<uint8_t>(CHANNEL_COUNT_->load(std::memory_order_acquire));
-        }
-        hdrptr[off++] = cc;
+        hdrptr[off++] = CHANNEL_COUNT_;
 
         uint8_t slot_width_bytes = (micfg_.SlotBitWidth_ > 0) ? static_cast<uint8_t>(micfg_.SlotBitWidth_ / SIZE_OF_A_BYTE_IN_BITS) : 3; // have to change magic number 3
         hdrptr[off++] = slot_width_bytes;

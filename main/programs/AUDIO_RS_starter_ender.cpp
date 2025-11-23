@@ -22,7 +22,7 @@ AUDIO_RS::AUDIO_RS(
     ring_tail_sp_(std::move(ring_tail)),
     abs_idx_sp_(std::move(abs_idx)),
     sequence_counter_(nullptr),
-    CHANNEL_COUNT_(nullptr),
+    CHANNEL_COUNT_(0),
     connection_failure_{0},
     conn_retry_base_ms_(2000),
     conn_retry_max_ms_(30000),
@@ -229,7 +229,7 @@ bool AUDIO_RS::stopping_check_del(char* taskname)
 {
     if (stopping_.load(std::memory_order_acquire))
     {
-        ESP_LOGI(seTAG,  "AUDIO_RS::%s stopping\n", taskname);
+        ESP_LOGI(seTAG,  "AUDIO_RS-> %s->||->stopping_check_del(char* taskname):stopping\n", taskname);
         return true;
     }
     return false;

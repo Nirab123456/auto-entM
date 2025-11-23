@@ -19,11 +19,6 @@ void AUDIO_RS::set_micfg(const MicrophoneConfig &cfg)
     else
     {
         mic_configured_.store(true, std::memory_order_release);
-        if (CHANNEL_COUNT_)
-        {
-            CHANNEL_COUNT_->store(micfg_.channel_count, std::memory_order_relaxed);
-        }
-        
     }
 }
 

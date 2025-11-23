@@ -37,7 +37,7 @@ class AUDIO_RS
         std::shared_ptr<std::atomic<size_t>>        ring_tail_sp_{nullptr};
         std::shared_ptr<std::atomic<uint64_t>>      abs_idx_sp_{nullptr};
         std::shared_ptr<std::atomic<uint32_t>>      sequence_counter_{nullptr};
-        std::shared_ptr<std::atomic<uint8_t>>       CHANNEL_COUNT_{nullptr};
+        uint8_t CHANNEL_COUNT_{0};
         std::atomic<uint32_t> connection_failure_{0};
 
         uint16_t conn_retry_base_ms_ = 2000;
@@ -123,6 +123,7 @@ class AUDIO_RS
         bool stopping_check_del(char* taskname);
         void WriteTCPHeader(uint32_t seq, uint64_t first_sample_index, uint64_t timestamp_us, uint16_t number_of_frames);
 
+        bool BasicNecesseryChecksLoop(char* taskname);
     public:
 
         TaskHandle_t i2s_reader_handle_ = nullptr;
